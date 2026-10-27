@@ -2,7 +2,7 @@ import os
 import glob
 import math
 import logging
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
@@ -19,9 +19,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CrimeBudgetAnalyzer")
 
-app = Flask(__name__)
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    static_folder=os.path.join(BASE_DIR, "static"),
+    static_url_path="/static",
+    template_folder=os.path.join(BASE_DIR, "templates")
+)
+
+@app.route("/static/<path:filename>")
+def serve_static_file(filename):
+    """Vercel 서버리스 환경에서 정적 자산(CSS, JS)을 직접 보장 제공"""
+    return send_from_directory(os.path.join(BASE_DIR, "static"), filename)
+
 
 def find_excel_file():
     """분석할 엑셀 또는 CSV 파일을 자동 탐색합니다 (Vercel 환경 지원)."""
