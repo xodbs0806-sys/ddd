@@ -123,13 +123,25 @@
                         <strong class="d-val text-danger" id="dCrimeVal">-</strong>
                     </div>
                     <div class="d-stat-row">
-                        <span class="d-label"><i class="fa-solid fa-users"></i> 주민 인구수</span>
-                        <strong class="d-val" id="dPopVal">-</strong>
+                        <span class="d-label"><i class="fa-solid fa-shield-halved"></i> 안전 효율 점수</span>
+                        <strong class="d-val text-success" id="dEffVal">-</strong>
                     </div>
                     <div class="d-stat-row">
                         <span class="d-label"><i class="fa-solid fa-tag"></i> 동네 특성</span>
                         <span class="d-val-tag" id="dNoteVal">-</span>
                     </div>
+
+                    <!-- 클릭한 동네 막대그래프 영역 (핵심 요구사항) -->
+                    <div class="detail-barchart-card">
+                        <div class="barchart-header">
+                            <h4><i class="fa-solid fa-chart-column"></i> <span id="barChartRegionTitle">동네</span> 핵심 지표 막대그래프</h4>
+                            <span class="barchart-sub">평균 100% 기준 비교</span>
+                        </div>
+                        <div class="barchart-container">
+                            <canvas id="detailBarChart"></canvas>
+                        </div>
+                    </div>
+
                     <div class="d-comment-box" id="dCommentBox">
                         <i class="fa-solid fa-lightbulb"></i>
                         <span id="dCommentText">선택된 동네 진단 내용이 표시됩니다.</span>

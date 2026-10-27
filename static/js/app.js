@@ -8,8 +8,10 @@ window.mapMarkerGroup = null;
 window.kakaoMapInstance = null;
 window.kakaoMarkerList = [];
 window.correlationChartInstance = null;
+window.detailBarChartInstance = null;
 let currentRawData = null;
 let currentGeneratedMarkdown = "";
+let currentStatsAverages = { avgX: 1, avgY: 1 };
 
 const SIDO_COORDINATES = {
     "ALL": { center: [36.2, 127.8], zoom: 7, kakaoLevel: 13 },
@@ -255,7 +257,7 @@ function renderMapMarkers(chartPoints, selectedSido) {
 }
 
 /**
- * 3. 클릭한 동네의 상세 정보 패널 업데이트
+ * 3. 클릭한 동네의 상세 정보 패널 업데이트 및 막대그래프 렌더링
  */
 function displaySelectedDetail(pt) {
     const placeholder = document.getElementById("detailContentPlaceholder");
@@ -264,22 +266,40 @@ function displaySelectedDetail(pt) {
     const badgeEl = document.getElementById("selectedBadge");
     const budgetEl = document.getElementById("dBudgetVal");
     const crimeEl = document.getElementById("dCrimeVal");
-    const popEl = document.getElementById("dPopVal");
+    const effEl = document.getElementById("dEffVal");
     const noteEl = document.getElementById("dNoteVal");
     const commentEl = document.getElementById("dCommentText");
+    const barChartTitle = document.getElementById("barChartRegionTitle");
 
     if (placeholder) placeholder.style.display = "none";
     if (statsBox) statsBox.style.display = "flex";
 
     if (nameEl) nameEl.textContent = pt.region;
+    if (barChartTitle) barChartTitle.textContent = pt.region;
     if (budgetEl) budgetEl.textContent = formatKoreanCurrency(pt.x);
     if (crimeEl) crimeEl.textContent = `${Number(pt.y).toLocaleString()}건`;
-    if (popEl) popEl.textContent = pt.pop ? `${Number(pt.pop).toLocaleString()}명` : "-";
     if (noteEl) noteEl.textContent = pt.note || "일반 주거 지역";
+
+    // 안전 효율 점수 계산 (100점 만점 기준)
+    // 범죄율이 낮을수록, 그리고 예산이 적절할수록 고득점
+    const avgX = currentStatsAverages.avgX || 1;
+    const avgY = currentStatsAverages.avgY || 1;
+    
+    // 예산 1억 원당 범죄 발생률
+    const costPerCrime = (pt.y / (pt.x / 100000000.0));
+    const avgCostPerCrime = (avgY / (avgX / 100000000.0));
+    
+    let effScore = Math.round(100 - ((costPerCrime / (avgCostPerCrime * 1.6)) * 50));
+    if (pt.quadrant === "Q4_EFFECTIVE") effScore = Math.min(98, Math.max(82, effScore + 15));
+    else if (pt.quadrant === "Q3_PEACEFUL") effScore = Math.min(88, Math.max(72, effScore + 5));
+    else if (pt.quadrant === "Q1_REVERSE") effScore = Math.min(65, Math.max(45, effScore - 5));
+    else if (pt.quadrant === "Q2_BLINDSPOT") effScore = Math.min(48, Math.max(25, effScore - 15));
+    
+    if (effEl) effEl.textContent = `${effScore}점 / 100점`;
 
     // 4사분면 뱃지 및 진단 코멘트
     let badgeClass = "badge-q4";
-    let comment = "예산을 알차게 투입하여 범죄를 억제하는 데 성공한 모범 지역입니다.";
+    let comment = "예산을 알차게 투입하여 범죄를 억제하는 데 성공한 1등 안심 모범 지역입니다.";
 
     if (pt.quadrant === "Q1_REVERSE") {
         badgeClass = "badge-q1";
@@ -299,6 +319,93 @@ function displaySelectedDetail(pt) {
     if (commentEl) {
         commentEl.textContent = comment;
     }
+
+    // ★ 클릭한 동네의 핵심 지표 3가지 막대그래프 즉시 렌더링!
+    renderDetailBarChart(pt, effScore);
+}
+
+/**
+ * 4. 클릭한 동네의 [총 예산, 범죄발생건수, 예산대비 안전효율] 막대그래프 렌더링
+ */
+function renderDetailBarChart(pt, effScore) {
+    const canvas = document.getElementById("detailBarChart");
+    if (!canvas) return;
+
+    if (window.detailBarChartInstance) {
+        window.detailBarChartInstance.destroy();
+        window.detailBarChartInstance = null;
+    }
+
+    const avgX = currentStatsAverages.avgX || 1;
+    const avgY = currentStatsAverages.avgY || 1;
+
+    // 평균을 100%로 환산한 상대 지수 계산
+    const budgetRatio = Math.round((pt.x / avgX) * 100);
+    const crimeRatio = Math.round((pt.y / avgY) * 100);
+
+    const ctx = canvas.getContext("2d");
+
+    window.detailBarChartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: ["총 예산", "범죄 발생", "안전 효율"],
+            datasets: [{
+                data: [budgetRatio, crimeRatio, effScore],
+                backgroundColor: [
+                    "rgba(59, 130, 246, 0.85)", // 예산: 블루
+                    "rgba(239, 68, 68, 0.85)",  // 범죄: 레드
+                    "rgba(16, 185, 129, 0.85)"  // 안전효율: 에메랄드 그린
+                ],
+                borderColor: ["#2563eb", "#dc2626", "#059669"],
+                borderWidth: 1.5,
+                borderRadius: 4,
+                barThickness: 16
+            }]
+        },
+        options: {
+            indexAxis: "y", // 가로 막대그래프 (한눈에 쏙 들어옴)
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: "rgba(15, 23, 42, 0.95)",
+                    padding: 10,
+                    callbacks: {
+                        label: function (context) {
+                            const idx = context.dataIndex;
+                            if (idx === 0) {
+                                return ` 총 예산: ${formatKoreanCurrency(pt.x)} (평균 대비 ${budgetRatio}%)`;
+                            } else if (idx === 1) {
+                                return ` 범죄 발생: ${Number(pt.y).toLocaleString()}건 (평균 대비 ${crimeRatio}%)`;
+                            } else {
+                                return ` 예산대비 안전효율: ${effScore}점 / 100점`;
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    max: Math.max(160, budgetRatio + 20, crimeRatio + 20),
+                    grid: { color: "#f1f5f9" },
+                    ticks: {
+                        callback: val => val + "%",
+                        font: { size: 10 },
+                        color: "#64748b"
+                    }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: {
+                        font: { size: 11, weight: "bold" },
+                        color: "#334155"
+                    }
+                }
+            }
+        }
+    });
 }
 
 /**
@@ -341,6 +448,10 @@ async function runAnalysis() {
         }
 
         updateHypothesisUI(resData.stats, resData.target_region_label);
+        currentStatsAverages = {
+            avgX: resData.stats.x_mean || 1,
+            avgY: resData.stats.y_mean || 1
+        };
         renderMapMarkers(resData.chart_data, resData.selected_sido);
         renderMiniChart(resData.chart_data);
 
