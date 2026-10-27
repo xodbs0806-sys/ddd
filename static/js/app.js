@@ -5,30 +5,32 @@
 
 window.mapInstance = null;
 window.mapMarkerGroup = null;
+window.kakaoMapInstance = null;
+window.kakaoOverlayList = [];
 window.correlationChartInstance = null;
 let currentRawData = null;
 let currentGeneratedMarkdown = "";
 
 // 각 시·도별 중심 위경도 및 권장 줌 레벨
 const SIDO_COORDINATES = {
-    "ALL": { center: [36.2, 127.8], zoom: 7 },
-    "서울": { center: [37.5665, 126.9780], zoom: 11 },
-    "경기": { center: [37.45, 127.15], zoom: 9 },
-    "부산": { center: [35.1796, 129.0756], zoom: 11 },
-    "대구": { center: [35.8714, 128.6014], zoom: 11 },
-    "인천": { center: [37.4563, 126.7052], zoom: 11 },
-    "광주": { center: [35.1595, 126.8526], zoom: 12 },
-    "대전": { center: [36.3504, 127.3845], zoom: 12 },
-    "울산": { center: [35.5384, 129.3114], zoom: 11 },
-    "세종": { center: [36.4800, 127.2890], zoom: 12 },
-    "강원": { center: [37.75, 128.2], zoom: 9 },
-    "충북": { center: [36.8, 127.7], zoom: 9 },
-    "충남": { center: [36.6, 126.8], zoom: 9 },
-    "전북": { center: [35.75, 127.15], zoom: 9 },
-    "전남": { center: [34.9, 126.9], zoom: 9 },
-    "경북": { center: [36.4, 128.7], zoom: 9 },
-    "경남": { center: [35.35, 128.25], zoom: 9 },
-    "제주": { center: [33.38, 126.55], zoom: 10 }
+    "ALL": { center: [36.2, 127.8], zoom: 7, kakaoLevel: 13 },
+    "서울": { center: [37.5665, 126.9780], zoom: 11, kakaoLevel: 8 },
+    "경기": { center: [37.45, 127.15], zoom: 9, kakaoLevel: 10 },
+    "부산": { center: [35.1796, 129.0756], zoom: 11, kakaoLevel: 9 },
+    "대구": { center: [35.8714, 128.6014], zoom: 11, kakaoLevel: 9 },
+    "인천": { center: [37.4563, 126.7052], zoom: 11, kakaoLevel: 9 },
+    "광주": { center: [35.1595, 126.8526], zoom: 12, kakaoLevel: 8 },
+    "대전": { center: [36.3504, 127.3845], zoom: 12, kakaoLevel: 8 },
+    "울산": { center: [35.5384, 129.3114], zoom: 11, kakaoLevel: 9 },
+    "세종": { center: [36.4800, 127.2890], zoom: 12, kakaoLevel: 8 },
+    "강원": { center: [37.75, 128.2], zoom: 9, kakaoLevel: 11 },
+    "충북": { center: [36.8, 127.7], zoom: 9, kakaoLevel: 11 },
+    "충남": { center: [36.6, 126.8], zoom: 9, kakaoLevel: 11 },
+    "전북": { center: [35.75, 127.15], zoom: 9, kakaoLevel: 11 },
+    "전남": { center: [34.9, 126.9], zoom: 9, kakaoLevel: 11 },
+    "경북": { center: [36.4, 128.7], zoom: 9, kakaoLevel: 11 },
+    "경남": { center: [35.35, 128.25], zoom: 9, kakaoLevel: 11 },
+    "제주": { center: [33.38, 126.55], zoom: 10, kakaoLevel: 9 }
 };
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -38,26 +40,44 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 /**
- * 1. 오픈소스 Leaflet 지도 초기화
+ * 1. 지도 초기화 (카카오 키가 있으면 카카오 지도, 없으면 무료 Leaflet 자동 선택)
  */
 function initMap() {
     const mapEl = document.getElementById("crimeMap");
-    if (!mapEl || window.mapInstance) return;
+    if (!mapEl) return;
 
-    window.mapInstance = L.map("crimeMap", {
-        center: [36.2, 127.8],
-        zoom: 7,
-        zoomControl: true
-    });
+    if (window.kakao && window.kakao.maps) {
+        // 카카오 지도 SDK 비동기 준비 콜백
+        kakao.maps.load(function () {
+            const options = {
+                center: new kakao.maps.LatLng(36.2, 127.8),
+                level: 13
+            };
+            window.kakaoMapInstance = new kakao.maps.Map(mapEl, options);
+            console.log("Kakao Maps 정식 활성화 완료");
+            
+            // 데이터가 이미 로드되어 있다면 마커 즉시 렌더링
+            if (window.pendingChartPoints) {
+                renderMapMarkers(window.pendingChartPoints, window.pendingSido || "ALL");
+            }
+        });
+    } else {
+        // 기본 무료 Leaflet 지도 활성화
+        if (window.mapInstance) return;
+        window.mapInstance = L.map("crimeMap", {
+            center: [36.2, 127.8],
+            zoom: 7,
+            zoomControl: true
+        });
 
-    // 가독성 높은 밝은 한국어 지도 타일 (CartoDB Voyager)
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
-        subdomains: "abcd",
-        maxZoom: 19
-    }).addTo(window.mapInstance);
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+            attribution: '&copy; OpenStreetMap &copy; CARTO',
+            subdomains: "abcd",
+            maxZoom: 19
+        }).addTo(window.mapInstance);
 
-    window.mapMarkerGroup = L.layerGroup().addTo(window.mapInstance);
+        window.mapMarkerGroup = L.layerGroup().addTo(window.mapInstance);
+    }
 }
 
 function initEventListeners() {
@@ -113,22 +133,68 @@ async function fetchExcelData() {
 }
 
 /**
- * 2. 지도 위에 클릭 없이 바로 보이는 '상시 라벨' 렌더링 (핵심 요구사항)
+ * 2. 지도 위에 클릭 없이 바로 보이는 '상시 라벨' 렌더링 (하이브리드 지원)
  */
 function renderMapMarkers(chartPoints, selectedSido) {
+    window.pendingChartPoints = chartPoints;
+    window.pendingSido = selectedSido;
+    const targetConfig = SIDO_COORDINATES[selectedSido] || SIDO_COORDINATES["ALL"];
+
+    // A. 카카오 지도 지원
+    if (window.kakaoMapInstance) {
+        // 기존 오버레이 삭제
+        if (window.kakaoOverlayList) {
+            window.kakaoOverlayList.forEach(ov => ov.setMap(null));
+        }
+        window.kakaoOverlayList = [];
+
+        // 시도 중심 이동 및 줌 레벨 조정
+        const moveLatLon = new kakao.maps.LatLng(targetConfig.center[0], targetConfig.center[1]);
+        window.kakaoMapInstance.setCenter(moveLatLon);
+        window.kakaoMapInstance.setLevel(targetConfig.kakaoLevel || 10);
+
+        chartPoints.forEach(pt => {
+            if (!pt.lat || !pt.lng) return;
+
+            let shortName = pt.region;
+            const prefixes = ["서울 ", "부산 ", "대구 ", "인천 ", "광주 ", "대전 ", "울산 ", "경기도 ", "강원도 ", "충북 ", "충남 ", "전북 ", "전남 ", "경북 ", "경남 ", "제주 "];
+            prefixes.forEach(p => { if (shortName.startsWith(p)) shortName = shortName.replace(p, ""); });
+
+            const formattedBudget = formatKoreanCurrency(pt.x);
+
+            let badgeClass = "badge-chip-q4";
+            let shortTag = "안심";
+            if (pt.quadrant === "Q1_REVERSE") { badgeClass = "badge-chip-q1"; shortTag = "번화가"; }
+            else if (pt.quadrant === "Q2_BLINDSPOT") { badgeClass = "badge-chip-q2"; shortTag = "지원시급"; }
+            else if (pt.quadrant === "Q3_PEACEFUL") { badgeClass = "badge-chip-q3"; shortTag = "평온"; }
+
+            const contentHtml = document.createElement("div");
+            contentHtml.className = `map-badge-chip ${badgeClass}`;
+            contentHtml.innerHTML = `<span>${shortName}</span> <span style="opacity:0.9; font-weight:normal;">${formattedBudget}</span> <span class="badge-tag-mini">${shortTag}</span>`;
+
+            const position = new kakao.maps.LatLng(pt.lat, pt.lng);
+            const customOverlay = new kakao.maps.CustomOverlay({
+                position: position,
+                content: contentHtml,
+                yAnchor: 0.5
+            });
+
+            customOverlay.setMap(window.kakaoMapInstance);
+            window.kakaoOverlayList.push(customOverlay);
+        });
+
+        return;
+    }
+
+    // B. Leaflet 무료 지도 지원
     if (!window.mapInstance || !window.mapMarkerGroup) return;
 
-    // 기존 마커 전체 초기화
     window.mapMarkerGroup.clearLayers();
-
-    // 선택된 시·도로 지도 부드럽게 이동
-    const targetConfig = SIDO_COORDINATES[selectedSido] || SIDO_COORDINATES["ALL"];
     window.mapInstance.flyTo(targetConfig.center, targetConfig.zoom, { duration: 1.0 });
 
     chartPoints.forEach(pt => {
         if (!pt.lat || !pt.lng) return;
 
-        // 동네 이름 정리 (예: '서울 종로구' -> '종로구', '경기도 수원시' -> '수원시')
         let shortName = pt.region;
         const prefixes = ["서울 ", "부산 ", "대구 ", "인천 ", "광주 ", "대전 ", "울산 ", "경기도 ", "강원도 ", "충북 ", "충남 ", "전북 ", "전남 ", "경북 ", "경남 ", "제주 "];
         prefixes.forEach(p => {
@@ -137,7 +203,6 @@ function renderMapMarkers(chartPoints, selectedSido) {
 
         const formattedBudget = formatKoreanCurrency(pt.x);
 
-        // 4사분면 클래스 매핑
         let badgeClass = "badge-chip-q4";
         let shortTag = "안심";
         if (pt.quadrant === "Q1_REVERSE") {
@@ -151,7 +216,6 @@ function renderMapMarkers(chartPoints, selectedSido) {
             shortTag = "평온";
         }
 
-        // 클릭 없이 지도 위에 바로 박혀서 보이는 뱃지 HTML
         const labelHtml = `
             <div class="map-badge-chip ${badgeClass}">
                 <span>${shortName}</span>
@@ -160,14 +224,12 @@ function renderMapMarkers(chartPoints, selectedSido) {
             </div>
         `;
 
-        // 보이지 않는 투명 마커를 생성하고, 영구 상시 툴팁(permanent: true)을 지도에 바로 부착
         const marker = L.circleMarker([pt.lat, pt.lng], {
             radius: 1,
             opacity: 0,
             fillOpacity: 0
         });
 
-        // 핵심: permanent: true -> 클릭이나 마우스 오버 없이 지도 위에 항상 표시됨!
         marker.bindTooltip(labelHtml, {
             permanent: true,
             direction: "center",

@@ -10,6 +10,7 @@ import numpy as np
 # 1. 환경변수 로드
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+KAKAO_MAP_API_KEY = os.getenv("KAKAO_MAP_API_KEY", "").strip()
 
 # 로깅 설정 (보안: API 키 원본 출력 차단)
 logging.basicConfig(
@@ -77,7 +78,11 @@ def index():
         "found": excel_file is not None,
         "filename": excel_file if excel_file else "파일 없음"
     }
-    return render_template("index.html", file_status=file_status)
+    return render_template(
+        "index.html", 
+        file_status=file_status,
+        kakao_api_key=KAKAO_MAP_API_KEY
+    )
 
 @app.route("/load-data", methods=["GET"])
 def load_data():

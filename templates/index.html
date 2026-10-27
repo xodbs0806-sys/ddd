@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>동네에 예산을 많이 쓰면 정말 범죄가 줄어들까?</title>
-    <!-- Leaflet 지도 CDN (필수) -->
+    <!-- Leaflet 지도 CDN (기본 무료) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    {% if kakao_api_key %}
+    <!-- 카카오 정식 지도 SDK (키 등록 시 자동 활성화) -->
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{ kakao_api_key }}"></script>
+    <script>window.KAKAO_APP_KEY = "{{ kakao_api_key }}";</script>
+    {% endif %}
     <!-- Chart.js 최신 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Markdown 파서 CDN -->
