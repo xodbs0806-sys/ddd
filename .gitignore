@@ -12,3 +12,5 @@ __pycache__/
 # OS Generated
 .DS_Store
 Thumbs.db
+node_modules/
+*.png

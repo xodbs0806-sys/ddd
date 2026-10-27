@@ -41,45 +41,13 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 /**
- * 1. 지도 초기화 (카카오 키 정상이면 카카오 지도, 오류 시 무료 Leaflet 자동 폴백)
+ * 1. 지도 초기화 (도메인 차단 걱정 없는 100% 무료 글로벌 표준 Leaflet + OpenStreetMap)
  */
 function initMap() {
-    const mapEl = document.getElementById("crimeMap");
-    if (!mapEl) return;
-
-    if (!window.KAKAO_LOAD_FAILED && window.kakao && window.kakao.maps) {
-        try {
-            kakao.maps.load(function () {
-                try {
-                    const options = {
-                        center: new kakao.maps.LatLng(36.2, 127.8),
-                        level: 13
-                    };
-                    window.kakaoMapInstance = new kakao.maps.Map(mapEl, options);
-                    console.log("Kakao Maps 정식 활성화 완료");
-                    if (window.pendingChartPoints) {
-                        renderMapMarkers(window.pendingChartPoints, window.pendingSido || "ALL");
-                    }
-                } catch (mapErr) {
-                    fallbackToLeaflet();
-                }
-            });
-        } catch (sdkErr) {
-            fallbackToLeaflet();
-        }
-
-        setTimeout(function () {
-            if (!window.kakaoMapInstance && !window.mapInstance) {
-                fallbackToLeaflet();
-            }
-        }, 1500);
-
-    } else {
-        fallbackToLeaflet();
-    }
+    initLeafletMap();
 }
 
-function fallbackToLeaflet() {
+function initLeafletMap() {
     const mapEl = document.getElementById("crimeMap");
     if (!mapEl || window.mapInstance) return;
 
@@ -92,13 +60,19 @@ function fallbackToLeaflet() {
         zoomControl: true
     });
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: "abcd",
-        maxZoom: 19
+    // 100% 무료, 워터마크 없는 글로벌 표준 OpenStreetMap 타일
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 18
     }).addTo(window.mapInstance);
 
     window.mapMarkerGroup = L.layerGroup().addTo(window.mapInstance);
+
+    setTimeout(() => {
+        if (window.mapInstance) {
+            window.mapInstance.invalidateSize();
+        }
+    }, 250);
 
     if (window.pendingChartPoints) {
         renderMapMarkers(window.pendingChartPoints, window.pendingSido || "ALL");
@@ -233,6 +207,7 @@ function renderMapMarkers(chartPoints, selectedSido) {
     // B. Leaflet 무료 지도 (깔끔한 CircleMarker 렌더링)
     if (!window.mapInstance || !window.mapMarkerGroup) return;
 
+    window.mapInstance.invalidateSize();
     window.mapMarkerGroup.clearLayers();
     window.mapInstance.flyTo(targetConfig.center, targetConfig.zoom, { duration: 1.0 });
 
