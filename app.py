@@ -33,9 +33,10 @@ def find_excel_file():
     return None
 
 def auto_detect_columns(df):
-    """동네명, 예산, 범죄 건수, 주민 수 컬럼을 자동 감지합니다."""
+    """동네명, 시도, 예산, 범죄 건수, 주민 수 컬럼을 자동 감지합니다."""
     cols = df.columns.tolist()
     mapping = {
+        "sido_col": None,
         "region_col": None,
         "budget_col": None,
         "crime_col": None,
@@ -45,6 +46,8 @@ def auto_detect_columns(df):
     for c in cols:
         c_str = str(c).strip()
         c_lower = c_str.lower()
+        if not mapping["sido_col"] and any(k in c_lower for k in ["시도", "광역", "sido", "province"]):
+            mapping["sido_col"] = c_str
         if not mapping["region_col"] and any(k in c_lower for k in ["지자체", "지역", "시군구", "자치구", "구명", "지역명", "city", "region"]):
             mapping["region_col"] = c_str
         if not mapping["budget_col"] and any(k in c_lower for k in ["예산", "세입", "세출", "금액", "budget", "안전예산"]):
@@ -94,6 +97,20 @@ def load_data():
         df_clean = df.dropna(how="all")
         missing_count = total_raw_rows - len(df_clean)
         
+        # 시도 목록 추출 (전국 지원)
+        sido_list = []
+        if mapping["sido_col"] and mapping["sido_col"] in df_clean.columns:
+            sido_list = sorted([str(s) for s in df_clean[mapping["sido_col"]].dropna().unique()])
+        elif mapping["region_col"]:
+            # 지자체명 앞 2글자에서 시도 추출
+            sidos = set()
+            for r in df_clean[mapping["region_col"]].dropna():
+                r_str = str(r).strip()
+                for s in ['서울', '부산', '대구', '인천', '광주', '대전', '울산', '세종', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주']:
+                    if r_str.startswith(s):
+                        sidos.add(s)
+            sido_list = sorted(list(sidos))
+        
         return jsonify({
             "success": True,
             "filename": excel_file,
@@ -101,7 +118,8 @@ def load_data():
             "missing_count": missing_count,
             "columns": df.columns.tolist(),
             "mapping": mapping,
-            "records": df_clean.head(35).to_dict(orient="records")
+            "sido_list": sido_list,
+            "records": df_clean.to_dict(orient="records") # 전국 전체 데이터 전송
         })
     except Exception as e:
         logger.error(f"데이터 로드 에러: {str(e)}")
@@ -109,7 +127,7 @@ def load_data():
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    """일반인 눈높이: '예산이 많으면 범죄가 정말 줄어들까?' 분석"""
+    """전국 및 시도별: '예산이 많으면 범죄가 정말 줄어들까?' 분석"""
     excel_file = find_excel_file()
     if not excel_file:
         return jsonify({"success": False, "error": "데이터 파일이 없습니다."}), 400
@@ -118,6 +136,7 @@ def generate():
     analysis_mode = req_data.get("mode", "A") # A: 쉬운 해설형, B: 동네 처방전형
     control_type = req_data.get("control_type", "total")
     exclude_commercial = req_data.get("exclude_commercial", False)
+    selected_sido = req_data.get("selected_sido", "ALL") # ALL 또는 '서울', '경기' 등
     
     try:
         if excel_file.endswith(".csv"):
@@ -132,8 +151,17 @@ def generate():
         crime_col = req_data.get("crime_col") or mapping["crime_col"]
         pop_col = req_data.get("pop_col") or mapping["pop_col"]
         note_col = req_data.get("note_col") or mapping["note_col"]
+        sido_col = mapping["sido_col"]
         
         df_work = df.copy()
+        
+        # 특정 시도 필터링 선택 시
+        if selected_sido and selected_sido != "ALL":
+            if sido_col and sido_col in df_work.columns:
+                df_work = df_work[df_work[sido_col].astype(str) == selected_sido]
+            else:
+                df_work = df_work[df_work[region_col].astype(str).str.startswith(selected_sido)]
+                
         df_work[budget_col] = pd.to_numeric(df_work[budget_col], errors="coerce")
         df_work[crime_col] = pd.to_numeric(df_work[crime_col], errors="coerce")
         if pop_col and pop_col in df_work.columns:
@@ -143,13 +171,13 @@ def generate():
         
         # 번화가/유흥가 제외 필터 적용 시
         if exclude_commercial and note_col and note_col in df_work.columns:
-            commercial_keywords = ["상업", "유흥", "도심", "관광"]
+            commercial_keywords = ["상업", "유흥", "도심", "관광", "번화가"]
             df_work = df_work[~df_work[note_col].astype(str).str.contains("|".join(commercial_keywords), na=False)]
             
         if len(df_work) < 3:
             return jsonify({
                 "success": False,
-                "error": f"분석할 동네 데이터가 부족합니다 (최소 3개 필요, 현재 {len(df_work)}개)"
+                "error": f"선택한 조건의 동네 데이터가 부족합니다 (최소 3개 필요, 현재 {len(df_work)}개). 지역 선택을 '전국 전체'로 변경해 보세요."
             }), 400
             
         # 변수 설정
@@ -175,21 +203,23 @@ def generate():
         r = float(df_work["x_val"].corr(df_work["y_val"]))
         if math.isnan(r): r = 0.0
         
-        # 일반인이 이해하기 쉬운 직관적 결론 문구
+        target_region_label = "전국" if selected_sido == "ALL" else f"'{selected_sido}' 지역"
+        
+        # 결론 문구
         if r <= -0.4:
-            hypothesis_verdict = "⭕ 맞습니다! 예산을 많이 쓴 동네일수록 범죄가 눈에 띄게 적습니다."
+            hypothesis_verdict = f"⭕ {target_region_label}: 예산을 많이 쓴 동네일수록 범죄가 눈에 띄게 적습니다!"
             verdict_badge = "success"
         elif r < -0.1:
-            hypothesis_verdict = "△ 약간 그렇습니다! 예산을 더 쓴 동네가 범죄가 조금 적은 편입니다."
+            hypothesis_verdict = f"△ {target_region_label}: 예산을 더 쓴 동네가 범죄가 조금 적은 편입니다."
             verdict_badge = "info"
         elif abs(r) <= 0.1:
-            hypothesis_verdict = "❓ 큰 차이 없습니다! 예산 액수와 범죄 건수는 거의 따로 움직입니다."
+            hypothesis_verdict = f"❓ {target_region_label}: 예산 액수와 범죄 건수는 거의 따로 움직입니다."
             verdict_badge = "neutral"
         elif r <= 0.4:
-            hypothesis_verdict = "❌ 아닙니다! 오히려 돈을 많이 쓴 동네에서 범죄가 더 많이 잡힙니다."
+            hypothesis_verdict = f"❌ {target_region_label}: 오히려 돈을 많이 쓴 동네에서 범죄가 더 많이 잡힙니다."
             verdict_badge = "warning"
         else:
-            hypothesis_verdict = "❌ 정반대입니다! 범죄가 심각한 번화가에 구청 예산이 가장 많이 쏟아붓고 있습니다."
+            hypothesis_verdict = f"❌ {target_region_label}: 범죄가 심각한 번화가에 구청 예산이 가장 많이 쏟아붓고 있습니다."
             verdict_badge = "danger"
 
         x_mean = float(df_work["x_val"].mean())
@@ -248,41 +278,41 @@ def generate():
                 "quad_color": quad_color
             })
 
-        logger.info(f"분석 완료 | 표본: {n}개 동네 | 상관도: {r:.4f} | 결론: {hypothesis_verdict}")
+        logger.info(f"분석 완료 | 대상: {target_region_label} (표본: {n}개 동네) | 상관도: {r:.4f}")
 
-        # 3. Gemini AI 프롬프트 (초보자/일반인 눈높이 특화)
+        # 3. Gemini AI 프롬프트 (전국 및 선택 지역 반영)
         prompt = f"""당신은 친절한 데이터 사이언스 선생님이자 우리 동네 안전 지킴이입니다.
 코딩이나 통계를 전혀 모르는 일반 시민과 동네 주민들이 읽을 수 있도록 쉬운 일상 언어로 설명해주세요.
-어려운 한자어, 영어(역인과성, 내생성, 피어슨 r 등)를 쓰지 말고, 누구나 무릎을 치며 이해할 수 있는 쉬운 비유(예: 소방관이 많은 곳에 불이 더 많이 나는 이유, 감기 환자가 많은 병원에 감기약이 더 많이 배달되는 이유 등)를 들어 작성해주세요.
+어려운 한자어, 영어를 쓰지 말고, 누구나 무릎을 치며 이해할 수 있는 쉬운 비유(소방관 비유: 불이 많이 나는 곳에 소방관을 많이 보내듯, 범죄가 잦은 곳에 예산이 많이 집중 투입되는 현상)를 들어 작성해주세요.
 
 [궁금한 질문]
 "동네에 방범 예산을 많이 쓰면, 정말 범죄가 줄어들까요?"
 
-[실제 데이터 수치]
-- 분석한 동네 수: 총 {n}개 동네 ({'주민 1인당 기준' if control_type == 'per_capita' else '동네 전체 총액 기준'})
-- 분석 결과 결론: **{hypothesis_verdict}**
+[분석 지역 및 데이터 수치]
+- 분석 대상 지역: **{target_region_label}** (총 {n}개 동네)
+- 분석 결론: **{hypothesis_verdict}**
 - 상관관계 수치: {r:.4f} (플러스면 예산과 범죄가 같이 많아짐, 마이너스면 예산 많을 때 범죄 줄어듦)
 - 평균 예산: {x_mean:,.0f}원 / 평균 범죄: {y_mean:,.1f}건
 
-[우리 동네 4가지 유형]
+[우리 동네 4가지 유형 (선택 지역 실측치)]
 1. ★ 1등 안심 동네 (예산 많이 써서 범죄 억제에 성공한 모범 동네):
-   {', '.join(quadrants['q4_effective']) if quadrants['q4_effective'] else '해당 없음'}
+   {', '.join(quadrants['q4_effective'][:8]) if quadrants['q4_effective'] else '해당 없음'}
 2. 예산 지원 시급 동네 (범죄가 많은데 예산이 모자라 힘든 동네):
-   {', '.join(quadrants['q2_blindspot']) if quadrants['q2_blindspot'] else '해당 없음'}
+   {', '.join(quadrants['q2_blindspot'][:8]) if quadrants['q2_blindspot'] else '해당 없음'}
 3. 초집중 번화가 동네 (술집, 상가가 많아 사건도 많고 예산도 쏟아붓는 중인 동네):
-   {', '.join(quadrants['q1_reverse']) if quadrants['q1_reverse'] else '해당 없음'}
+   {', '.join(quadrants['q1_reverse'][:8]) if quadrants['q1_reverse'] else '해당 없음'}
 4. 자연 평온 동네 (조용한 주택가라 적은 돈으로도 평온한 동네):
-   {', '.join(quadrants['q3_peaceful']) if quadrants['q3_peaceful'] else '해당 없음'}
+   {', '.join(quadrants['q3_peaceful'][:8]) if quadrants['q3_peaceful'] else '해당 없음'}
 
 [글 작성 순서 및 규칙]
-1. **결론부터 시원하게 말하기**: "예산을 많이 쓴다고 범죄가 저절로 줄어들지는 않는다"는 핵심 팩트 전달
-2. **소방관 비유로 쉽게 풀기**: 왜 돈을 많이 쓴 동네(강남 등)에서 범죄가 더 많은지, "불이 많이 나는 곳에 소방관이 많이 가듯, 범죄가 잦은 위험 지역에 구청이 방범 예산을 뒤늦게 집중 지원하기 때문"이라는 원리를 흥미진진하게 설명
-3. **우리 동네 4가지 유형 비교**:
-   - 1등 안심 동네는 도대체 돈을 어디에 어떻게 썼길래 범죄가 적을까?
-   - 예산이 모자란 동네에는 어떤 도움이 가장 급할까?
-4. **앞으로의 해결책**: 우리 세금을 어디에 어떻게 써야 진짜로 범죄를 줄일 수 있을지 상식적인 실천 방안 제시
+1. **결론부터 시원하게 말하기**: "{target_region_label} 전체적으로 예산을 많이 쓴다고 범죄가 저절로 줄어들지는 않는다"는 핵심 팩트 전달
+2. **소방관 비유로 쉽게 풀기**: 왜 돈을 많이 쓴 동네에서 범죄가 더 많은지 소방관 비유로 알기 쉽게 설명
+3. **선택한 지역({target_region_label})의 4가지 동네 비교**:
+   - 1등 안심 동네의 성공 요인
+   - 예산이 모자란 동네에 필요한 도움
+4. **앞으로의 실천 방안**: 우리 세금을 어디에 어떻게 써야 진짜로 범죄를 줄일 수 있을지 상식적인 제언
 
-문체는 다정하고 친절하며 신뢰감 있는 말투(~해요, ~입니다)로 마크다운 포맷으로 작성해주세요.
+다정하고 친절한 말투(~해요, ~입니다)의 마크다운 포맷으로 작성해주세요.
 """
 
         ai_report = ""
@@ -297,12 +327,13 @@ def generate():
                 ai_report = response.text
             except Exception as api_err:
                 logger.error(f"Gemini API 에러: {str(api_err)}")
-                ai_report = f"> [!NOTE] 인공지능 해설 요약\n\n" + generate_easy_report(r, hypothesis_verdict, quadrants)
+                ai_report = f"> [!NOTE] 인공지능 해설 요약\n\n" + generate_easy_report(r, hypothesis_verdict, quadrants, target_region_label)
         else:
-            ai_report = generate_easy_report(r, hypothesis_verdict, quadrants)
+            ai_report = generate_easy_report(r, hypothesis_verdict, quadrants, target_region_label)
 
         return jsonify({
             "success": True,
+            "target_region_label": target_region_label,
             "stats": {
                 "r": round(r, 4),
                 "hypothesis_verdict": hypothesis_verdict,
@@ -325,13 +356,13 @@ def generate():
         logger.error(f"분석 중 오류: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-def generate_easy_report(r, verdict, quad):
-    q4_str = ", ".join([f"**{name}**" for name in quad["q4_effective"]]) if quad["q4_effective"] else "없음"
-    q2_str = ", ".join([f"**{name}**" for name in quad["q2_blindspot"]]) if quad["q2_blindspot"] else "없음"
-    q1_str = ", ".join([f"**{name}**" for name in quad["q1_reverse"]]) if quad["q1_reverse"] else "없음"
-    q3_str = ", ".join([f"**{name}**" for name in quad["q3_peaceful"]]) if quad["q3_peaceful"] else "없음"
+def generate_easy_report(r, verdict, quad, region_label):
+    q4_str = ", ".join([f"**{name}**" for name in quad["q4_effective"][:6]]) if quad["q4_effective"] else "없음"
+    q2_str = ", ".join([f"**{name}**" for name in quad["q2_blindspot"][:6]]) if quad["q2_blindspot"] else "없음"
+    q1_str = ", ".join([f"**{name}**" for name in quad["q1_reverse"][:6]]) if quad["q1_reverse"] else "없음"
+    q3_str = ", ".join([f"**{name}**" for name in quad["q3_peaceful"][:6]]) if quad["q3_peaceful"] else "없음"
 
-    return f"""### 💡 한눈에 쏙 들어오는 분석 결과
+    return f"""### 💡 [{region_label}] 한눈에 쏙 들어오는 분석 결과
 
 > [!IMPORTANT]
 > **핵심 결론**: **{verdict}**  
@@ -342,14 +373,14 @@ def generate_easy_report(r, verdict, quad):
 #### 1. "돈을 많이 썼는데 왜 범죄가 더 많을까요?" (소방관 비유)
 - 혹시 **"소방관이 많은 동네에 불이 더 자주 난다"**는 말을 들어보셨나요?
 - 당연히 소방관이 불을 지르는 게 아니죠! **불이 자주 나는 위험한 동네이기 때문에 소방서와 소방관을 더 많이 배치한 것**입니다.
-- 우리 동네 방범 예산도 똑같습니다. 강남이나 홍대처럼 술집과 상가가 많고 사람이 붐비는 곳은 원래 사건사고가 많습니다. 그래서 구청과 경찰이 **사고를 막으려고 뒤늦게 예산과 CCTV를 집중적으로 쏟아붓고 있는 것**입니다.
+- 우리 동네 방범 예산도 똑같습니다. 상가와 유흥가가 많고 사람이 붐비는 곳은 원래 사건사고가 많습니다. 그래서 구청과 경찰이 **사고를 막으려고 뒤늦게 예산과 CCTV를 집중적으로 쏟아붓고 있는 것**입니다.
 
 ---
 
 #### 2. 우리 동네는 4가지 중 어디에 속할까요?
 
 1. **★ 1등 안심 동네 (예산 듬뿍 · 범죄는 뚝!)**: {q4_str}
-   - **돈값을 제대로 한 모범 동네입니다!** 예산을 넉넉히 들여 어두운 골목길을 밝히고, 인공지능 CCTV를 촘촘히 설치해서 범죄를 눈에 띄게 줄이는 데 성공했습니다.
+   - **돈값을 제대로 한 모범 동네입니다!** 예산을 넉넉히 들여 어두운 골목길을 밝히고, 안심 CCTV를 촘촘히 설치해서 범죄를 눈에 띄게 줄이는 데 성공했습니다.
 2. **예산 지원 시급 동네 (범죄는 많은데 예산 부족)**: {q2_str}
    - **가장 먼저 도와줘야 할 동네입니다.** 범죄는 자주 일어나는데 구청 살림이 넉넉하지 못해 방범 시설이 모자란 곳입니다. 내년도 예산을 이 동네에 먼저 몰아주어야 합니다.
 3. **초집중 번화가 동네 (사건도 많고 예산도 많음)**: {q1_str}
@@ -360,7 +391,7 @@ def generate_easy_report(r, verdict, quad):
 ---
 
 #### 3. 앞으로 우리 세금, 어떻게 써야 범죄를 줄일 수 있을까요?
-1. **모든 동네에 똑같이 나눠주지 말기**: 이미 안전한 동네보다, 범죄는 많은데 돈이 모자란 **'예산 지원 시급 동네({q2_str})'**에 먼저 집중 지원해야 합니다.
+1. **모든 동네에 똑같이 나눠주지 말기**: 이미 안전한 동네보다, 범죄는 많은데 돈이 모자란 **'예산 지원 시급 동네'**에 먼저 집중 지원해야 합니다.
 2. **CCTV만 무작정 달지 말기**: 사람이 많이 몰리는 번화가는 카메라 개수만 늘리기보다, 밤길 안심 귀가 순찰대나 골목길 조명 개선처럼 주민들이 피부로 느끼는 실질적인 안전망을 갖추어야 합니다.
 """
 

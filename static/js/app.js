@@ -1,6 +1,6 @@
 /**
- * AI Crime Budget & Rate Easy Analyzer - User-Friendly Frontend Script
- * 초보자 및 일반인을 위한 쉬운 언어와 인터랙션
+ * AI Crime Budget & Rate Easy Analyzer - Nationwide & Regional Script
+ * 전국 229개 시·군·구 지원 및 쉬운 일상 언어
  */
 
 window.correlationChartInstance = null;
@@ -18,6 +18,12 @@ function initEventListeners() {
 
     const btnAnalyze = document.getElementById("btnAnalyze");
     if (btnAnalyze) btnAnalyze.addEventListener("click", runAnalysis);
+
+    const selectSido = document.getElementById("selectSido");
+    if (selectSido) selectSido.addEventListener("change", function () {
+        filterTableBySido();
+        runAnalysis();
+    });
 
     const chkCommercial = document.getElementById("chkExcludeCommercial");
     if (chkCommercial) chkCommercial.addEventListener("change", runAnalysis);
@@ -43,7 +49,7 @@ function initEventListeners() {
 }
 
 /**
- * 억 원 및 만 원 단위 쉬운 금액 포맷
+ * 금액 단위 포맷팅 함수 (억 원 / 만 원)
  */
 function formatKoreanCurrency(amount) {
     if (isNaN(amount) || amount === null || amount === undefined) return "-";
@@ -87,11 +93,11 @@ async function fetchExcelData() {
         currentRawData = data;
         if (fileBadge) {
             fileBadge.className = "file-status-badge badge-active";
-            fileBadgeText.innerHTML = `분석 파일: <strong>${data.filename}</strong> (총 ${data.total_rows}개 동네)`;
+            fileBadgeText.innerHTML = `분석 파일: <strong>${data.filename}</strong> (전국 ${data.total_rows}개 동네)`;
         }
-        if (countBadge) countBadge.textContent = `${data.total_rows}개 동네 로드됨`;
+        if (countBadge) countBadge.textContent = `전국 ${data.total_rows}개 동네 로드됨`;
 
-        renderPreviewTable(data.records, data.mapping);
+        filterTableBySido();
         runAnalysis();
 
     } catch (err) {
@@ -100,10 +106,33 @@ async function fetchExcelData() {
     }
 }
 
+/**
+ * 선택된 시·도에 따라 미리보기 테이블 필터링
+ */
+function filterTableBySido() {
+    if (!currentRawData || !currentRawData.records) return;
+
+    const selectSido = document.getElementById("selectSido");
+    const chosen = selectSido ? selectSido.value : "ALL";
+    const mapping = currentRawData.mapping;
+
+    let filtered = currentRawData.records;
+    if (chosen !== "ALL") {
+        filtered = filtered.filter(row => {
+            const sidoVal = mapping.sido_col ? String(row[mapping.sido_col]) : "";
+            const regVal = mapping.region_col ? String(row[mapping.region_col]) : "";
+            return sidoVal === chosen || regVal.startsWith(chosen);
+        });
+    }
+
+    renderPreviewTable(filtered, mapping);
+}
+
 function renderPreviewTable(records, mapping) {
     const tbody = document.getElementById("tableBody");
     if (!tbody || !records || records.length === 0) return;
 
+    const sidoCol = mapping.sido_col;
     const regCol = mapping.region_col;
     const budCol = mapping.budget_col;
     const crmCol = mapping.crime_col;
@@ -111,15 +140,18 @@ function renderPreviewTable(records, mapping) {
     const notCol = mapping.note_col;
 
     let html = "";
-    records.forEach(row => {
+    // 최대 40개 표시
+    records.slice(0, 40).forEach(row => {
         const rawBudget = Number(row[budCol]) || 0;
         const formattedBudget = formatKoreanCurrency(rawBudget);
         const crimeVal = row[crmCol] !== undefined ? Number(row[crmCol]).toLocaleString() + "건" : "-";
         const popVal = popCol && row[popCol] ? Number(row[popCol]).toLocaleString() + "명" : "-";
         const noteVal = notCol && row[notCol] ? row[notCol] : "-";
+        const sidoVal = sidoCol && row[sidoCol] ? row[sidoCol] : "-";
 
         html += `
             <tr>
+                <td><span class="count-badge">${sidoVal}</span></td>
                 <td><strong>${row[regCol] || "-"}</strong></td>
                 <td class="text-right">${rawBudget.toLocaleString()}원 <span style="color:#2563eb; font-weight:600;">(${formattedBudget})</span></td>
                 <td class="text-right">${crimeVal}</td>
@@ -165,7 +197,7 @@ function calculateLinearRegression(points) {
 }
 
 /**
- * 쉬운 설명용 4사분면 그래프 렌더링
+ * Chart.js 4사분면 그래프 렌더링
  */
 function renderChart(chartPoints, xLabel, yLabel) {
     const canvas = document.getElementById("correlationChart");
@@ -189,9 +221,9 @@ function renderChart(chartPoints, xLabel, yLabel) {
                     data: chartPoints,
                     backgroundColor: pointColors,
                     borderColor: "#ffffff",
-                    borderWidth: 2,
-                    pointRadius: 7,
-                    pointHoverRadius: 10,
+                    borderWidth: 1.5,
+                    pointRadius: 6,
+                    pointHoverRadius: 9,
                     order: 2
                 },
                 {
@@ -284,20 +316,35 @@ function renderChart(chartPoints, xLabel, yLabel) {
 }
 
 /**
- * 분석 실행
+ * 분석 실행 (/generate)
  */
 async function runAnalysis() {
     const analysisMode = document.getElementById("analysisMode").value;
     const controlType = document.getElementById("controlType").value;
+    const selectSido = document.getElementById("selectSido");
+    const selectedSido = selectSido ? selectSido.value : "ALL";
     const chkExclude = document.getElementById("chkExcludeCommercial");
     const excludeCommercial = chkExclude ? chkExclude.checked : false;
 
     const loadingOverlay = document.getElementById("loadingOverlay");
     const reportViewer = document.getElementById("reportViewer");
     const reportBadge = document.getElementById("reportModeBadge");
+    const targetRegionSpan = document.getElementById("verdictTargetRegion");
+
+    const sidoNames = {
+        "ALL": "대한민국 전국",
+        "서울": "서울특별시", "경기": "경기도", "부산": "부산광역시", "대구": "대구광역시",
+        "인천": "인천광역시", "광주": "광주광역시", "대전": "대전광역시", "울산": "울산광역시",
+        "세종": "세종시", "강원": "강원도", "충북": "충청북도", "충남": "충청남도",
+        "전북": "전라북도", "전남": "전라남도", "경북": "경상북도", "경남": "경상남도", "제주": "제주도"
+    };
+
+    if (targetRegionSpan) {
+        targetRegionSpan.textContent = sidoNames[selectedSido] || selectedSido;
+    }
 
     if (reportBadge) {
-        reportBadge.textContent = analysisMode === "A" ? "쉬운 해설형" : "동네 처방전형";
+        reportBadge.textContent = analysisMode === "A" ? `쉬운 해설형 (${sidoNames[selectedSido] || selectedSido})` : `동네 처방전형 (${sidoNames[selectedSido] || selectedSido})`;
     }
 
     if (loadingOverlay) loadingOverlay.style.display = "block";
@@ -310,6 +357,7 @@ async function runAnalysis() {
             body: JSON.stringify({
                 mode: analysisMode,
                 control_type: controlType,
+                selected_sido: selectedSido,
                 exclude_commercial: excludeCommercial
             })
         });
@@ -323,7 +371,7 @@ async function runAnalysis() {
             return;
         }
 
-        updateHypothesisUI(resData.stats);
+        updateHypothesisUI(resData.stats, resData.target_region_label);
         renderChart(resData.chart_data, resData.stats.x_label, resData.stats.y_label);
 
         currentGeneratedMarkdown = resData.report_markdown;
@@ -333,7 +381,7 @@ async function runAnalysis() {
             reportViewer.innerText = currentGeneratedMarkdown;
         }
 
-        showToast("분석 결과와 AI 설명이 준비되었습니다!", "success");
+        showToast(`${resData.target_region_label} 분석이 완료되었습니다!`, "success");
 
     } catch (err) {
         console.error("분석 에러:", err);
@@ -347,7 +395,7 @@ async function runAnalysis() {
 /**
  * 쉬운 UI 텍스트 업데이트
  */
-function updateHypothesisUI(stats) {
+function updateHypothesisUI(stats, regionLabel) {
     const verdictBanner = document.getElementById("verdictBanner");
     const verdictTitle = document.getElementById("verdictTitle");
     const verdictDesc = document.getElementById("verdictDesc");
@@ -359,9 +407,9 @@ function updateHypothesisUI(stats) {
     if (verdictTitle) verdictTitle.textContent = stats.hypothesis_verdict;
     if (verdictDesc) {
         if (stats.r > 0) {
-            verdictDesc.textContent = "돈을 써서 범죄가 늘어난 게 아니라, 사람이 붐비고 위험한 번화가에 구청과 경찰이 예산을 더 많이 쏟아붓고 있기 때문입니다.";
+            verdictDesc.textContent = `${regionLabel} ${stats.sample_count}개 동네 분석 결과, 사람이 붐비고 위험한 번화가에 구청과 경찰이 예산을 더 많이 쏟아붓고 있어 '치안 예산의 역설'이 나타납니다.`;
         } else {
-            verdictDesc.textContent = "예산을 많이 들인 동네일수록 범죄 예방 시설이 잘 갖춰져 범죄가 줄어드는 좋은 효과가 나타나고 있습니다.";
+            verdictDesc.textContent = `${regionLabel} ${stats.sample_count}개 동네 분석 결과, 예산을 많이 들인 동네일수록 범죄 예방 시설이 잘 갖춰져 범죄가 줄어드는 좋은 효과가 나타나고 있습니다.`;
         }
     }
 
@@ -418,7 +466,7 @@ function downloadMarkdownFile() {
     const a = document.createElement("a");
     const now = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `동네_범죄예방_분석리포트_${now}.md`;
+    a.download = `우리동네_범죄예방_분석리포트_${now}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
