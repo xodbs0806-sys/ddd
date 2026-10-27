@@ -1,17 +1,16 @@
 /**
- * AI Crime Budget & Rate - Permanent Visible Map & Dashboard Script
- * 클릭 없이 지도 위에 바로 동네 상태와 예산 라벨 상시 노출
+ * AI Crime Budget & Rate - Clean Interactive Map & Click-to-View Detail
+ * 지도 위의 복잡한 글자들을 걷어내고, 궁금한 동네 클릭 시 상세 정보 즉시 표시
  */
 
 window.mapInstance = null;
 window.mapMarkerGroup = null;
 window.kakaoMapInstance = null;
-window.kakaoOverlayList = [];
+window.kakaoMarkerList = [];
 window.correlationChartInstance = null;
 let currentRawData = null;
 let currentGeneratedMarkdown = "";
 
-// 각 시·도별 중심 위경도 및 권장 줌 레벨
 const SIDO_COORDINATES = {
     "ALL": { center: [36.2, 127.8], zoom: 7, kakaoLevel: 13 },
     "서울": { center: [37.5665, 126.9780], zoom: 11, kakaoLevel: 8 },
@@ -40,43 +39,67 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 /**
- * 1. 지도 초기화 (카카오 키가 있으면 카카오 지도, 없으면 무료 Leaflet 자동 선택)
+ * 1. 지도 초기화 (카카오 키 정상이면 카카오 지도, 오류 시 무료 Leaflet 자동 폴백)
  */
 function initMap() {
     const mapEl = document.getElementById("crimeMap");
     if (!mapEl) return;
 
-    if (window.kakao && window.kakao.maps) {
-        // 카카오 지도 SDK 비동기 준비 콜백
-        kakao.maps.load(function () {
-            const options = {
-                center: new kakao.maps.LatLng(36.2, 127.8),
-                level: 13
-            };
-            window.kakaoMapInstance = new kakao.maps.Map(mapEl, options);
-            console.log("Kakao Maps 정식 활성화 완료");
-            
-            // 데이터가 이미 로드되어 있다면 마커 즉시 렌더링
-            if (window.pendingChartPoints) {
-                renderMapMarkers(window.pendingChartPoints, window.pendingSido || "ALL");
+    if (!window.KAKAO_LOAD_FAILED && window.kakao && window.kakao.maps) {
+        try {
+            kakao.maps.load(function () {
+                try {
+                    const options = {
+                        center: new kakao.maps.LatLng(36.2, 127.8),
+                        level: 13
+                    };
+                    window.kakaoMapInstance = new kakao.maps.Map(mapEl, options);
+                    console.log("Kakao Maps 정식 활성화 완료");
+                    if (window.pendingChartPoints) {
+                        renderMapMarkers(window.pendingChartPoints, window.pendingSido || "ALL");
+                    }
+                } catch (mapErr) {
+                    fallbackToLeaflet();
+                }
+            });
+        } catch (sdkErr) {
+            fallbackToLeaflet();
+        }
+
+        setTimeout(function () {
+            if (!window.kakaoMapInstance && !window.mapInstance) {
+                fallbackToLeaflet();
             }
-        });
+        }, 1500);
+
     } else {
-        // 기본 무료 Leaflet 지도 활성화
-        if (window.mapInstance) return;
-        window.mapInstance = L.map("crimeMap", {
-            center: [36.2, 127.8],
-            zoom: 7,
-            zoomControl: true
-        });
+        fallbackToLeaflet();
+    }
+}
 
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-            attribution: '&copy; OpenStreetMap &copy; CARTO',
-            subdomains: "abcd",
-            maxZoom: 19
-        }).addTo(window.mapInstance);
+function fallbackToLeaflet() {
+    const mapEl = document.getElementById("crimeMap");
+    if (!mapEl || window.mapInstance) return;
 
-        window.mapMarkerGroup = L.layerGroup().addTo(window.mapInstance);
+    window.kakaoMapInstance = null;
+    mapEl.innerHTML = "";
+
+    window.mapInstance = L.map("crimeMap", {
+        center: [36.2, 127.8],
+        zoom: 7,
+        zoomControl: true
+    });
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: "abcd",
+        maxZoom: 19
+    }).addTo(window.mapInstance);
+
+    window.mapMarkerGroup = L.layerGroup().addTo(window.mapInstance);
+
+    if (window.pendingChartPoints) {
+        renderMapMarkers(window.pendingChartPoints, window.pendingSido || "ALL");
     }
 }
 
@@ -92,9 +115,6 @@ function initEventListeners() {
     if (btnCopy) btnCopy.addEventListener("click", copyReportToClipboard);
 }
 
-/**
- * 금액 단위 포맷팅 함수 (억 원 / 만 원)
- */
 function formatKoreanCurrency(amount) {
     if (isNaN(amount) || amount === null || amount === undefined) return "-";
     const num = Number(amount);
@@ -104,18 +124,15 @@ function formatKoreanCurrency(amount) {
     if (absVal >= 100000000) {
         const in100M = absVal / 100000000;
         const formatted = Number.isInteger(in100M) ? in100M.toLocaleString() : in100M.toFixed(1);
-        return `${sign}${formatted}억`;
+        return `${sign}${formatted}억 원`;
     } else if (absVal >= 10000) {
         const in10K = Math.round(absVal / 10000);
-        return `${sign}${in10K.toLocaleString()}만`;
+        return `${sign}${in10K.toLocaleString()}만 원`;
     } else {
         return `${sign}${Math.round(absVal).toLocaleString()}원`;
     }
 }
 
-/**
- * 엑셀 데이터 로드
- */
 async function fetchExcelData() {
     try {
         const response = await fetch("/load-data");
@@ -128,27 +145,24 @@ async function fetchExcelData() {
         runAnalysis();
     } catch (err) {
         console.error("데이터 로드 오류:", err);
-        showToast("데이터를 읽어오는 중 문제가 발생했습니다.", "error");
     }
 }
 
 /**
- * 2. 지도 위에 클릭 없이 바로 보이는 '상시 라벨' 렌더링 (하이브리드 지원)
+ * 2. 지도 위 깔끔한 마커 렌더링 & 클릭 시 상세 정보 열기 (핵심 요구사항)
  */
 function renderMapMarkers(chartPoints, selectedSido) {
     window.pendingChartPoints = chartPoints;
     window.pendingSido = selectedSido;
     const targetConfig = SIDO_COORDINATES[selectedSido] || SIDO_COORDINATES["ALL"];
 
-    // A. 카카오 지도 지원
+    // A. 카카오 지도
     if (window.kakaoMapInstance) {
-        // 기존 오버레이 삭제
-        if (window.kakaoOverlayList) {
-            window.kakaoOverlayList.forEach(ov => ov.setMap(null));
+        if (window.kakaoMarkerList) {
+            window.kakaoMarkerList.forEach(m => m.setMap(null));
         }
-        window.kakaoOverlayList = [];
+        window.kakaoMarkerList = [];
 
-        // 시도 중심 이동 및 줌 레벨 조정
         const moveLatLon = new kakao.maps.LatLng(targetConfig.center[0], targetConfig.center[1]);
         window.kakaoMapInstance.setCenter(moveLatLon);
         window.kakaoMapInstance.setLevel(targetConfig.kakaoLevel || 10);
@@ -156,37 +170,42 @@ function renderMapMarkers(chartPoints, selectedSido) {
         chartPoints.forEach(pt => {
             if (!pt.lat || !pt.lng) return;
 
-            let shortName = pt.region;
-            const prefixes = ["서울 ", "부산 ", "대구 ", "인천 ", "광주 ", "대전 ", "울산 ", "경기도 ", "강원도 ", "충북 ", "충남 ", "전북 ", "전남 ", "경북 ", "경남 ", "제주 "];
-            prefixes.forEach(p => { if (shortName.startsWith(p)) shortName = shortName.replace(p, ""); });
-
-            const formattedBudget = formatKoreanCurrency(pt.x);
-
-            let badgeClass = "badge-chip-q4";
-            let shortTag = "안심";
-            if (pt.quadrant === "Q1_REVERSE") { badgeClass = "badge-chip-q1"; shortTag = "번화가"; }
-            else if (pt.quadrant === "Q2_BLINDSPOT") { badgeClass = "badge-chip-q2"; shortTag = "지원시급"; }
-            else if (pt.quadrant === "Q3_PEACEFUL") { badgeClass = "badge-chip-q3"; shortTag = "평온"; }
-
-            const contentHtml = document.createElement("div");
-            contentHtml.className = `map-badge-chip ${badgeClass}`;
-            contentHtml.innerHTML = `<span>${shortName}</span> <span style="opacity:0.9; font-weight:normal;">${formattedBudget}</span> <span class="badge-tag-mini">${shortTag}</span>`;
-
             const position = new kakao.maps.LatLng(pt.lat, pt.lng);
-            const customOverlay = new kakao.maps.CustomOverlay({
+
+            // 색상별 커스텀 마커 이미지 또는 동그라미 오버레이
+            const markerContent = document.createElement("div");
+            markerContent.style.width = "18px";
+            markerContent.style.height = "18px";
+            markerContent.style.borderRadius = "50%";
+            markerContent.style.backgroundColor = pt.quad_color || "#3b82f6";
+            markerContent.style.border = "2px solid #ffffff";
+            markerContent.style.boxShadow = "0 2px 5px rgba(0,0,0,0.3)";
+            markerContent.style.cursor = "pointer";
+            markerContent.title = pt.region;
+
+            // 클릭 이벤트: 오른쪽에 상세 정보 표시
+            markerContent.addEventListener("click", function () {
+                displaySelectedDetail(pt);
+            });
+
+            const customMarker = new kakao.maps.CustomOverlay({
                 position: position,
-                content: contentHtml,
+                content: markerContent,
                 yAnchor: 0.5
             });
 
-            customOverlay.setMap(window.kakaoMapInstance);
-            window.kakaoOverlayList.push(customOverlay);
+            customMarker.setMap(window.kakaoMapInstance);
+            window.kakaoMarkerList.push(customMarker);
         });
 
+        // 초기 기본 선택: 첫 번째 동네 자동 표시
+        if (chartPoints.length > 0) {
+            displaySelectedDetail(chartPoints[0]);
+        }
         return;
     }
 
-    // B. Leaflet 무료 지도 지원
+    // B. Leaflet 무료 지도 (깔끔한 CircleMarker 렌더링)
     if (!window.mapInstance || !window.mapMarkerGroup) return;
 
     window.mapMarkerGroup.clearLayers();
@@ -195,53 +214,95 @@ function renderMapMarkers(chartPoints, selectedSido) {
     chartPoints.forEach(pt => {
         if (!pt.lat || !pt.lng) return;
 
-        let shortName = pt.region;
-        const prefixes = ["서울 ", "부산 ", "대구 ", "인천 ", "광주 ", "대전 ", "울산 ", "경기도 ", "강원도 ", "충북 ", "충남 ", "전북 ", "전남 ", "경북 ", "경남 ", "제주 "];
-        prefixes.forEach(p => {
-            if (shortName.startsWith(p)) shortName = shortName.replace(p, "");
-        });
-
-        const formattedBudget = formatKoreanCurrency(pt.x);
-
-        let badgeClass = "badge-chip-q4";
-        let shortTag = "안심";
-        if (pt.quadrant === "Q1_REVERSE") {
-            badgeClass = "badge-chip-q1";
-            shortTag = "번화가";
-        } else if (pt.quadrant === "Q2_BLINDSPOT") {
-            badgeClass = "badge-chip-q2";
-            shortTag = "지원시급";
-        } else if (pt.quadrant === "Q3_PEACEFUL") {
-            badgeClass = "badge-chip-q3";
-            shortTag = "평온";
-        }
-
-        const labelHtml = `
-            <div class="map-badge-chip ${badgeClass}">
-                <span>${shortName}</span>
-                <span style="opacity:0.9; font-weight:normal;">${formattedBudget}</span>
-                <span class="badge-tag-mini">${shortTag}</span>
-            </div>
-        `;
-
+        // 깔끔한 원형 마커 (글씨 범벅 제거!)
         const marker = L.circleMarker([pt.lat, pt.lng], {
-            radius: 1,
-            opacity: 0,
-            fillOpacity: 0
+            radius: 8,
+            fillColor: pt.quad_color || "#3b82f6",
+            color: "#ffffff",
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9
         });
 
-        marker.bindTooltip(labelHtml, {
-            permanent: true,
-            direction: "center",
-            className: "custom-map-label"
+        // 마우스 호버 시 가벼운 동네 이름만 툴팁 표시
+        marker.bindTooltip(`<strong>${pt.region}</strong>`, {
+            permanent: false,
+            direction: "top"
+        });
+
+        // ★ 클릭 시 오른쪽 패널에 상세 정보 즉시 표시!
+        marker.on("click", function () {
+            displaySelectedDetail(pt);
+            
+            // 지도 팝업도 함께 가볍게 오픈
+            const popupHtml = `
+                <div class="popup-mini-box">
+                    <strong>${pt.region}</strong>
+                    <div>💰 예산: ${formatKoreanCurrency(pt.x)}</div>
+                    <div>🚨 범죄: ${pt.y.toFixed(0)}건</div>
+                </div>
+            `;
+            marker.bindPopup(popupHtml, { className: "custom-clean-popup" }).openPopup();
         });
 
         window.mapMarkerGroup.addLayer(marker);
     });
+
+    // 초기 기본 선택: 첫 번째 동네 자동 표시
+    if (chartPoints.length > 0) {
+        displaySelectedDetail(chartPoints[0]);
+    }
 }
 
 /**
- * 3. 분석 실행 (/generate)
+ * 3. 클릭한 동네의 상세 정보 패널 업데이트
+ */
+function displaySelectedDetail(pt) {
+    const placeholder = document.getElementById("detailContentPlaceholder");
+    const statsBox = document.getElementById("detailStatsBox");
+    const nameEl = document.getElementById("selectedRegionName");
+    const badgeEl = document.getElementById("selectedBadge");
+    const budgetEl = document.getElementById("dBudgetVal");
+    const crimeEl = document.getElementById("dCrimeVal");
+    const popEl = document.getElementById("dPopVal");
+    const noteEl = document.getElementById("dNoteVal");
+    const commentEl = document.getElementById("dCommentText");
+
+    if (placeholder) placeholder.style.display = "none";
+    if (statsBox) statsBox.style.display = "flex";
+
+    if (nameEl) nameEl.textContent = pt.region;
+    if (budgetEl) budgetEl.textContent = formatKoreanCurrency(pt.x);
+    if (crimeEl) crimeEl.textContent = `${Number(pt.y).toLocaleString()}건`;
+    if (popEl) popEl.textContent = pt.pop ? `${Number(pt.pop).toLocaleString()}명` : "-";
+    if (noteEl) noteEl.textContent = pt.note || "일반 주거 지역";
+
+    // 4사분면 뱃지 및 진단 코멘트
+    let badgeClass = "badge-q4";
+    let comment = "예산을 알차게 투입하여 범죄를 억제하는 데 성공한 모범 지역입니다.";
+
+    if (pt.quadrant === "Q1_REVERSE") {
+        badgeClass = "badge-q1";
+        comment = "유동인구와 번화가가 많아 사건사고가 잦으며, 구청과 경찰이 예산을 가장 집중적으로 쏟아붓고 있는 곳입니다.";
+    } else if (pt.quadrant === "Q2_BLINDSPOT") {
+        badgeClass = "badge-q2";
+        comment = "범죄 발생이 높은 편이나 예산이 부족합니다. 차년도 방범 인프라 긴급 지원이 가장 시급한 지역입니다.";
+    } else if (pt.quadrant === "Q3_PEACEFUL") {
+        badgeClass = "badge-q3";
+        comment = "조용한 주거지 위주로 구성되어 있어, 큰 예산 투입 없이도 스스로 평온하고 안전한 치안을 유지하고 있습니다.";
+    }
+
+    if (badgeEl) {
+        badgeEl.className = `detail-badge ${badgeClass}`;
+        badgeEl.textContent = pt.quad_label;
+    }
+    if (commentEl) {
+        commentEl.textContent = comment;
+    }
+}
+
+/**
+ * 4. 분석 실행 (/generate)
  */
 async function runAnalysis() {
     const selectSido = document.getElementById("selectSido");
@@ -279,16 +340,10 @@ async function runAnalysis() {
             return;
         }
 
-        // 상단 배너 업데이트
         updateHypothesisUI(resData.stats, resData.target_region_label);
-
-        // ★ 지도 위에 상시 라벨 렌더링
         renderMapMarkers(resData.chart_data, resData.selected_sido);
-
-        // 미니 흐름 그래프 렌더링
         renderMiniChart(resData.chart_data);
 
-        // 3줄 AI 브리핑 업데이트
         currentGeneratedMarkdown = resData.report_markdown;
         if (reportViewer && typeof marked !== "undefined") {
             reportViewer.innerHTML = marked.parse(currentGeneratedMarkdown);
@@ -299,9 +354,6 @@ async function runAnalysis() {
     }
 }
 
-/**
- * 상단 간결 배너 업데이트
- */
 function updateHypothesisUI(stats, regionLabel) {
     const verdictBanner = document.getElementById("verdictBanner");
     const verdictTitle = document.getElementById("verdictTitle");
@@ -336,9 +388,6 @@ function updateHypothesisUI(stats, regionLabel) {
     if (valModelCount) valModelCount.textContent = `${q4Count}개 동네`;
 }
 
-/**
- * 미니 흐름 그래프 렌더링 (보조)
- */
 function renderMiniChart(chartPoints) {
     const canvas = document.getElementById("correlationChart");
     if (!canvas) return;

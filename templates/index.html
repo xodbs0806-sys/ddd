@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>동네에 예산을 많이 쓰면 정말 범죄가 줄어들까?</title>
-    <!-- Leaflet 지도 CDN (기본 무료) -->
+    <!-- Leaflet 지도 CDN (무료 오픈소스 백업) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     {% if kakao_api_key %}
-    <!-- 카카오 정식 지도 SDK (키 등록 시 자동 활성화) -->
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{ kakao_api_key }}"></script>
+    <!-- 카카오 정식 지도 SDK -->
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{ kakao_api_key }}" onerror="window.KAKAO_LOAD_FAILED = true;"></script>
     <script>window.KAKAO_APP_KEY = "{{ kakao_api_key }}";</script>
     {% endif %}
     <!-- Chart.js 최신 CDN -->
@@ -27,13 +27,12 @@
         <header class="dashboard-header">
             <div class="header-content">
                 <div class="title-area">
-                    <span class="system-badge"><i class="fa-solid fa-map-location-dot"></i> 대한민국 안전 지도 한눈에 보기</span>
+                    <span class="system-badge"><i class="fa-solid fa-map-location-dot"></i> 대한민국 안전 지도 인터랙티브 뷰</span>
                     <h1>"동네에 방범 예산을 많이 쓰면, 정말 범죄가 줄어들까요?"</h1>
                 </div>
                 <div class="header-controls">
-                    <!-- 지역 선택 드롭다운 -->
                     <div class="sido-selector-wrap">
-                        <label for="selectSido"><i class="fa-solid fa-location-dot"></i> 지역 이동:</label>
+                        <label for="selectSido"><i class="fa-solid fa-location-dot"></i> 지역 선택:</label>
                         <select id="selectSido" class="form-select-sm">
                             <option value="ALL" selected>🇰🇷 대한민국 전국 전체 (229개 동네)</option>
                             <option value="서울">서울특별시 (25개 구)</option>
@@ -59,12 +58,12 @@
             </div>
         </header>
 
-        <!-- 2. 한눈에 보는 핵심 결론 배너 (글을 확 줄이고 직관적으로) -->
+        <!-- 2. 한눈에 보는 결론 배너 -->
         <section class="verdict-banner card" id="verdictBanner">
             <div class="verdict-left">
                 <div class="verdict-tag"><i class="fa-solid fa-circle-question"></i> <span id="verdictTargetRegion">전국</span> 한눈에 보는 결론</div>
                 <div class="verdict-title" id="verdictTitle">데이터를 분석하고 있습니다...</div>
-                <p class="verdict-desc" id="verdictDesc">지도 위 라벨을 보면 각 동네의 예산과 범죄 수준을 바로 확인할 수 있습니다.</p>
+                <p class="verdict-desc" id="verdictDesc">지도 위의 색깔 점을 클릭하면 해당 동네의 예산과 범죄 정보가 자세히 열립니다.</p>
             </div>
             <div class="verdict-stats">
                 <div class="v-stat-box">
@@ -75,33 +74,72 @@
                 <div class="v-stat-box highlight-box">
                     <span class="v-label">★ 돈값 한 안심 동네</span>
                     <span class="v-value" id="valModelCount">-</span>
-                    <span class="v-sub">초록색 라벨</span>
+                    <span class="v-sub">초록색 점</span>
                 </div>
             </div>
         </section>
 
-        <!-- 3. 메인: 대한민국 지도 (지도 위에 동네 이름과 상태가 바로 보임!) -->
-        <section class="map-section card">
-            <div class="section-header">
-                <h2><i class="fa-solid fa-map"></i> 우리 동네 안전 지도 (지도 위에 바로 표시)</h2>
-                <div class="chart-quadrant-legends">
-                    <span class="legend-chip chip-q4"><i class="fa-solid fa-circle"></i> 1등 안심 (예산 듬뿍·범죄 뚝)</span>
-                    <span class="legend-chip chip-q2"><i class="fa-solid fa-circle"></i> 지원 시급 (범죄 많은데 예산 부족)</span>
-                    <span class="legend-chip chip-q1"><i class="fa-solid fa-circle"></i> 번화가 (사람 많아 사건·예산 집중)</span>
-                    <span class="legend-chip chip-q3"><i class="fa-solid fa-circle"></i> 자연 평온 (적은 돈으로도 평온)</span>
+        <!-- 3. 메인: 깔끔한 지도 + 클릭한 동네 상세 정보 카드 (2단 레이아웃) -->
+        <div class="map-view-grid">
+            <!-- 지도 영역 (깔끔한 원형 마커만 표시) -->
+            <section class="map-section card">
+                <div class="section-header">
+                    <h2><i class="fa-solid fa-map"></i> 우리 동네 안전 지도 (궁금한 동네를 클릭하세요)</h2>
+                    <div class="chart-quadrant-legends">
+                        <span class="legend-chip chip-q4"><i class="fa-solid fa-circle"></i> 1등 안심</span>
+                        <span class="legend-chip chip-q2"><i class="fa-solid fa-circle"></i> 지원 시급</span>
+                        <span class="legend-chip chip-q1"><i class="fa-solid fa-circle"></i> 번화가</span>
+                        <span class="legend-chip chip-q3"><i class="fa-solid fa-circle"></i> 자연 평온</span>
+                    </div>
                 </div>
-            </div>
 
-            <!-- 지도 컨테이너 (클릭 안 해도 동네 라벨이 지도 위에 그대로 상시 표시) -->
-            <div id="crimeMap" class="map-container"></div>
-            <div class="map-helper-tip">
-                <i class="fa-solid fa-circle-info"></i> 마우스 휠로 확대/축소하거나 드래그할 수 있으며, 지도 위에 <strong>[동네명 | 예산 | 유형]</strong>이 바로 떠 있습니다.
-            </div>
-        </section>
+                <div id="crimeMap" class="map-container"></div>
+                <div class="map-helper-tip">
+                    <i class="fa-solid fa-hand-pointer"></i> 지도 위의 <strong>색깔 점</strong>을 누르면 오른쪽에 상세 정보가 뜹니다.
+                </div>
+            </section>
 
-        <!-- 4. 간결한 3줄 AI 브리핑 & 그래프 접이식 영역 -->
+            <!-- 클릭한 동네 상세 정보 패널 (Selected Detail Panel) -->
+            <section class="selected-detail-card card" id="selectedDetailCard">
+                <div class="detail-header">
+                    <span class="detail-badge" id="selectedBadge">동네 선택 대기 중</span>
+                    <h2 id="selectedRegionName">궁금한 동네를 클릭하세요</h2>
+                </div>
+                
+                <div class="detail-content" id="detailContentPlaceholder">
+                    <div class="empty-detail-state">
+                        <i class="fa-solid fa-location-crosshairs"></i>
+                        <p>왼쪽 지도에서 궁금한 동네의 <strong>색깔 점</strong>을 누르면<br>예산, 범죄 건수, 안전 상태가 여기에 나타납니다.</p>
+                    </div>
+                </div>
+
+                <div class="detail-stats-box" id="detailStatsBox" style="display: none;">
+                    <div class="d-stat-row">
+                        <span class="d-label"><i class="fa-solid fa-sack-dollar"></i> 방범 예산</span>
+                        <strong class="d-val text-primary" id="dBudgetVal">-</strong>
+                    </div>
+                    <div class="d-stat-row">
+                        <span class="d-label"><i class="fa-solid fa-triangle-exclamation"></i> 범죄 발생</span>
+                        <strong class="d-val text-danger" id="dCrimeVal">-</strong>
+                    </div>
+                    <div class="d-stat-row">
+                        <span class="d-label"><i class="fa-solid fa-users"></i> 주민 인구수</span>
+                        <strong class="d-val" id="dPopVal">-</strong>
+                    </div>
+                    <div class="d-stat-row">
+                        <span class="d-label"><i class="fa-solid fa-tag"></i> 동네 특성</span>
+                        <span class="d-val-tag" id="dNoteVal">-</span>
+                    </div>
+                    <div class="d-comment-box" id="dCommentBox">
+                        <i class="fa-solid fa-lightbulb"></i>
+                        <span id="dCommentText">선택된 동네 진단 내용이 표시됩니다.</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- 4. 하단 3줄 AI 브리핑 & 흐름 그래프 -->
         <div class="sub-dashboard-grid">
-            <!-- 3줄 AI 브리핑 카드 -->
             <section class="concise-report-card card">
                 <div class="card-mini-header">
                     <h3><i class="fa-solid fa-robot"></i> 인공지능 3줄 핵심 요약</h3>
@@ -116,7 +154,6 @@
                 </div>
             </section>
 
-            <!-- 산점도 그래프 카드 (서브) -->
             <section class="mini-chart-card card">
                 <div class="card-mini-header">
                     <h3><i class="fa-solid fa-chart-line"></i> 전체 흐름 분포 그래프</h3>
@@ -127,7 +164,7 @@
             </section>
         </div>
 
-        <!-- 5. 토스트 메시지 & 푸터 -->
+        <!-- 토스트 메시지 & 푸터 -->
         <div class="toast-message" id="toastMessage"></div>
         <footer class="dashboard-footer">
             <p>우리 동네 범죄예방 예산과 안전 지도 | 대한민국 공공데이터 오픈소스 맵</p>
@@ -153,7 +190,6 @@
         <span id="listQ3"></span>
     </div>
 
-    <!-- 프론트 스크립트 -->
     <script src="/static/js/app.js"></script>
 </body>
 </html>
