@@ -124,8 +124,22 @@
                     </div>
                     <div class="d-stat-row">
                         <span class="d-label"><i class="fa-solid fa-shield-halved"></i> 안전 효율 점수</span>
-                        <strong class="d-val text-success" id="dEffVal">-</strong>
+                        <div class="d-val-wrap">
+                            <strong class="d-val text-success" id="dEffVal">-</strong>
+                            <span class="d-sub-badge" id="dEffGrade">-</span>
+                        </div>
                     </div>
+
+                    <!-- 안전효율 점수 산출 근거 박스 (핵심 요구사항) -->
+                    <div class="eff-reason-card" id="effReasonCard">
+                        <div class="reason-header">
+                            <i class="fa-solid fa-scale-balanced"></i> <strong>점수 산출 근거</strong>
+                        </div>
+                        <ul class="reason-list" id="effReasonList">
+                            <li>동네를 클릭하면 산출 근거가 표시됩니다.</li>
+                        </ul>
+                    </div>
+
                     <div class="d-stat-row">
                         <span class="d-label"><i class="fa-solid fa-tag"></i> 동네 특성</span>
                         <span class="d-val-tag" id="dNoteVal">-</span>

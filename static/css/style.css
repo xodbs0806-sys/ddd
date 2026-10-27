@@ -326,14 +326,67 @@ body {
     gap: 12px;
 }
 
-.d-stat-row {
+.d-val-wrap {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 10px 14px;
+    gap: 8px;
+}
+
+.d-sub-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #ecfdf5;
+    color: #065f46;
+}
+
+/* 안전효율 점수 산출 근거 박스 */
+.eff-reason-card {
     background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 3.5px solid var(--q4-green);
     border-radius: var(--radius-sm);
-    border: 1px solid var(--border-color);
+    padding: 10px 14px;
+    margin-top: -2px;
+}
+
+.reason-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 6px;
+}
+
+.reason-list {
+    list-style: none !important;
+    padding-left: 0 !important;
+    margin: 0 !important;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.reason-list li {
+    position: relative;
+    padding-left: 14px;
+    margin-bottom: 3px;
+}
+
+.reason-list li::before {
+    content: "•";
+    position: absolute;
+    left: 2px;
+    top: 0;
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+.reason-list strong {
+    color: var(--text-primary);
 }
 
 .d-label {

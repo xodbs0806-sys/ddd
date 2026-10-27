@@ -267,6 +267,8 @@ function displaySelectedDetail(pt) {
     const budgetEl = document.getElementById("dBudgetVal");
     const crimeEl = document.getElementById("dCrimeVal");
     const effEl = document.getElementById("dEffVal");
+    const effGradeEl = document.getElementById("dEffGrade");
+    const effReasonList = document.getElementById("effReasonList");
     const noteEl = document.getElementById("dNoteVal");
     const commentEl = document.getElementById("dCommentText");
     const barChartTitle = document.getElementById("barChartRegionTitle");
@@ -281,21 +283,67 @@ function displaySelectedDetail(pt) {
     if (noteEl) noteEl.textContent = pt.note || "일반 주거 지역";
 
     // 안전 효율 점수 계산 (100점 만점 기준)
-    // 범죄율이 낮을수록, 그리고 예산이 적절할수록 고득점
     const avgX = currentStatsAverages.avgX || 1;
     const avgY = currentStatsAverages.avgY || 1;
     
     // 예산 1억 원당 범죄 발생률
-    const costPerCrime = (pt.y / (pt.x / 100000000.0));
+    const in100M = pt.x / 100000000.0;
+    const costPerCrime = in100M > 0 ? (pt.y / in100M) : 0;
     const avgCostPerCrime = (avgY / (avgX / 100000000.0));
     
     let effScore = Math.round(100 - ((costPerCrime / (avgCostPerCrime * 1.6)) * 50));
-    if (pt.quadrant === "Q4_EFFECTIVE") effScore = Math.min(98, Math.max(82, effScore + 15));
-    else if (pt.quadrant === "Q3_PEACEFUL") effScore = Math.min(88, Math.max(72, effScore + 5));
-    else if (pt.quadrant === "Q1_REVERSE") effScore = Math.min(65, Math.max(45, effScore - 5));
-    else if (pt.quadrant === "Q2_BLINDSPOT") effScore = Math.min(48, Math.max(25, effScore - 15));
+    let gradeLabel = "보통";
+    let gradeColor = "#0f766e";
+
+    if (pt.quadrant === "Q4_EFFECTIVE") {
+        effScore = Math.min(98, Math.max(82, effScore + 15));
+        gradeLabel = "최우수 (A+)";
+        gradeColor = "#065f46";
+    } else if (pt.quadrant === "Q3_PEACEFUL") {
+        effScore = Math.min(88, Math.max(72, effScore + 5));
+        gradeLabel = "우수 (A)";
+        gradeColor = "#1e40af";
+    } else if (pt.quadrant === "Q1_REVERSE") {
+        effScore = Math.min(65, Math.max(45, effScore - 5));
+        gradeLabel = "주의 (B)";
+        gradeColor = "#b45309";
+    } else if (pt.quadrant === "Q2_BLINDSPOT") {
+        effScore = Math.min(48, Math.max(25, effScore - 15));
+        gradeLabel = "개선시급 (C)";
+        gradeColor = "#b91c1c";
+    }
     
-    if (effEl) effEl.textContent = `${effScore}점 / 100점`;
+    if (effEl) effEl.textContent = `${effScore}점`;
+    if (effGradeEl) {
+        effGradeEl.textContent = gradeLabel;
+        effGradeEl.style.color = gradeColor;
+    }
+
+    // ★ 안전효율 점수 산출 근거 3가지 동적 생성
+    if (effReasonList) {
+        const budgetRatio = Math.round((pt.x / avgX) * 100);
+        const crimeRatio = Math.round((pt.y / avgY) * 100);
+        
+        let reason1 = `<strong>예산 1억 원당 범죄:</strong> 약 <strong>${costPerCrime.toFixed(1)}건</strong> (평균 ${avgCostPerCrime.toFixed(1)}건 대비 ${costPerCrime <= avgCostPerCrime ? '<span style="color:#16a34a;">우수</span>' : '<span style="color:#dc2626;">취약</span>'})`;
+        let reason2 = `<strong>투입 대비 발생 비율:</strong> 예산은 평균의 <strong>${budgetRatio}%</strong>를 썼고, 범죄는 평균의 <strong>${crimeRatio}%</strong> 발생`;
+        let reason3 = "";
+        
+        if (effScore >= 80) {
+            reason3 = `<strong>종합 판정:</strong> 적은 비용으로 범죄를 효과적으로 막아내어 <strong>안전 가성비가 매우 높음</strong>`;
+        } else if (effScore >= 65) {
+            reason3 = `<strong>종합 판정:</strong> 조용한 주거 환경으로 치안 상태가 안정적으로 유지 중`;
+        } else if (effScore >= 45) {
+            reason3 = `<strong>종합 판정:</strong> 번화가/유흥가 밀집으로 <strong>많은 예산 투입에도 사건이 잦아 효율 감점</strong>`;
+        } else {
+            reason3 = `<strong>종합 판정:</strong> 범죄는 많은데 예산이 턱없이 부족하여 <strong>긴급 예산 수혈 필요</strong>`;
+        }
+
+        effReasonList.innerHTML = `
+            <li>${reason1}</li>
+            <li>${reason2}</li>
+            <li>${reason3}</li>
+        `;
+    }
 
     // 4사분면 뱃지 및 진단 코멘트
     let badgeClass = "badge-q4";
