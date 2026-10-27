@@ -115,6 +115,29 @@ function initEventListeners() {
 
     const btnCopy = document.getElementById("btnCopyReport");
     if (btnCopy) btnCopy.addEventListener("click", copyReportToClipboard);
+
+    // AI 자유 질문(Q&A) 이벤트 바인딩
+    const btnSendQuestion = document.getElementById("btnSendQuestion");
+    const inputQuestion = document.getElementById("userQuestionInput");
+    if (btnSendQuestion && inputQuestion) {
+        btnSendQuestion.addEventListener("click", sendUserQuestion);
+        inputQuestion.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+                sendUserQuestion();
+            }
+        });
+    }
+
+    // 추천 질문 칩 클릭 시 자동 입력 및 전송
+    document.querySelectorAll(".quick-chip").forEach(chip => {
+        chip.addEventListener("click", function () {
+            const q = this.getAttribute("data-q");
+            if (inputQuestion) {
+                inputQuestion.value = q;
+                sendUserQuestion();
+            }
+        });
+    });
 }
 
 function formatKoreanCurrency(amount) {
@@ -535,11 +558,20 @@ function updateHypothesisUI(stats, regionLabel) {
     }
 
     if (valR) {
-        valR.textContent = (stats.r >= 0 ? "+" : "") + stats.r.toFixed(2);
-        valR.style.color = stats.r >= 0 ? "#b45309" : "#047857";
+        if (stats.r > 0.15) {
+            valR.textContent = "예산 많은 곳 = 범죄도 많음";
+            valR.style.color = "#b45309";
+        } else if (stats.r < -0.15) {
+            valR.textContent = "예산 많을수록 = 범죄 줄어듦";
+            valR.style.color = "#047857";
+        } else {
+            valR.textContent = "예산과 범죄 = 서로 무관함";
+            valR.style.color = "#475569";
+        }
     }
     if (valRDesc) {
-        valRDesc.textContent = stats.r > 0 ? "예산 많을수록 범죄도 많음" : "예산 많을수록 범죄 줄어듦";
+        const sign = stats.r >= 0 ? "+" : "";
+        valRDesc.textContent = `통계 수치: ${sign}${stats.r.toFixed(2)} (위험 지역 예산 집중)`;
     }
 
     const q = stats.quadrants || {};
@@ -593,6 +625,62 @@ function copyReportToClipboard() {
     navigator.clipboard.writeText(currentGeneratedMarkdown).then(() => {
         showToast("핵심 요약이 복사되었습니다!", "success");
     });
+}
+
+/**
+ * 5. 사용자 맞춤 자유 질문 전송 및 AI 답변 렌더링
+ */
+async function sendUserQuestion() {
+    const input = document.getElementById("userQuestionInput");
+    const container = document.getElementById("qaAnswerContainer");
+    const loading = document.getElementById("qaLoading");
+    const bubble = document.getElementById("qaAnswerBubble");
+    const selectSido = document.getElementById("selectSido");
+    const selectedSido = selectSido ? selectSido.value : "전국";
+
+    if (!input || !input.value.trim()) {
+        showToast("궁금한 질문을 입력해주세요!", "info");
+        return;
+    }
+
+    const questionText = input.value.trim();
+
+    if (container) container.style.display = "block";
+    if (loading) loading.style.display = "flex";
+    if (bubble) bubble.innerHTML = "";
+
+    try {
+        const response = await fetch("/ask-ai", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                question: questionText,
+                selected_region: selectedSido
+            })
+        });
+
+        const resData = await response.json();
+        if (!resData.success) {
+            if (bubble) bubble.innerHTML = `<p style="color:#dc2626;">오류가 발생했습니다: ${resData.error}</p>`;
+            return;
+        }
+
+        if (bubble) {
+            if (typeof marked !== "undefined") {
+                bubble.innerHTML = marked.parse(resData.answer);
+            } else {
+                bubble.innerText = resData.answer;
+            }
+        }
+
+        showToast("인공지능 답변이 도착했습니다!", "success");
+
+    } catch (err) {
+        console.error("질문 전송 에러:", err);
+        if (bubble) bubble.innerHTML = `<p style="color:#dc2626;">서버와 통신 중 문제가 발생했습니다.</p>`;
+    } finally {
+        if (loading) loading.style.display = "none";
+    }
 }
 
 function showToast(message, type = "info") {

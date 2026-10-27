@@ -162,6 +162,21 @@ body {
     min-width: 120px;
 }
 
+.v-stat-box.trend-box {
+    min-width: 170px;
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+
+.v-value-trend {
+    display: block;
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: #92400e;
+    margin: 3px 0;
+    line-height: 1.25;
+}
+
 .v-stat-box.highlight-box {
     background: #ecfdf5;
     border-color: #a7f3d0;
@@ -555,6 +570,151 @@ body {
 
 .btn-outline:hover {
     background: #f1f5f9;
+}
+
+/* AI 질문응답(Q&A) 스타일 */
+.qa-section {
+    border-top: 4px solid #4f46e5;
+    background: #ffffff;
+    padding: 24px;
+}
+
+.qa-header {
+    margin-bottom: 14px;
+}
+
+.qa-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.qa-icon-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.qa-title-wrap h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.qa-subtitle {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.quick-questions-wrap {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.quick-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+.quick-chip {
+    background: #f8fafc;
+    border: 1px solid var(--border-color);
+    padding: 5px 12px;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.quick-chip:hover {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+    transform: translateY(-1px);
+}
+
+.qa-input-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.qa-input {
+    flex: 1;
+    padding: 12px 18px;
+    border: 1.5px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.qa-input:focus {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+.qa-send-btn {
+    padding: 12px 24px;
+    width: auto !important;
+    background: #4f46e5 !important;
+    white-space: nowrap;
+}
+
+.qa-send-btn:hover {
+    background: #4338ca !important;
+}
+
+.qa-answer-container {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: var(--radius-sm);
+    padding: 18px;
+    margin-top: 14px;
+}
+
+.qa-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #4f46e5;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.spinner-sm {
+    width: 20px;
+    height: 20px;
+    border: 3px solid #e0e7ff;
+    border-top: 3px solid #4f46e5;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.qa-answer-bubble {
+    font-size: 0.92rem;
+    line-height: 1.65;
+    color: #1e293b;
+}
+
+.qa-answer-bubble h3 {
+    font-size: 1.15rem;
+    color: #4f46e5;
+    margin-top: 10px;
+    margin-bottom: 8px;
 }
 
 .toast-message {

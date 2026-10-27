@@ -66,15 +66,15 @@
                 <p class="verdict-desc" id="verdictDesc">지도 위의 색깔 점을 클릭하면 해당 동네의 예산과 범죄 정보가 자세히 열립니다.</p>
             </div>
             <div class="verdict-stats">
-                <div class="v-stat-box">
-                    <span class="v-label">예산과 범죄 연결도</span>
-                    <span class="v-value" id="valCorrelationR">-</span>
-                    <span class="v-sub" id="valCorrelationRDesc">0에 가까울수록 무관</span>
+                <div class="v-stat-box trend-box">
+                    <span class="v-label">함께 움직이는 경향</span>
+                    <span class="v-value-trend" id="valCorrelationR">예산 많은 곳 = 범죄도 많음</span>
+                    <span class="v-sub" id="valCorrelationRDesc">수치: +0.75 (위험지역 예산 집중)</span>
                 </div>
                 <div class="v-stat-box highlight-box">
                     <span class="v-label">★ 돈값 한 안심 동네</span>
                     <span class="v-value" id="valModelCount">-</span>
-                    <span class="v-sub">초록색 점</span>
+                    <span class="v-sub">초록색 점 클릭</span>
                 </div>
             </div>
         </section>
@@ -189,6 +189,47 @@
                 </div>
             </section>
         </div>
+
+        <!-- 5. 내가 원하는 질문을 적고 답을 받는 AI 질의응답 (새로 추가된 핵심 기능) -->
+        <section class="qa-section card">
+            <div class="qa-header">
+                <div class="qa-title-wrap">
+                    <span class="qa-icon-badge"><i class="fa-solid fa-comments"></i></span>
+                    <div>
+                        <h3>인공지능에게 물어보기 (AI 치안 데이터 Q&A)</h3>
+                        <p class="qa-subtitle">궁금한 점을 자유롭게 물어보세요! 인공지능이 229개 동네 빅데이터를 바탕으로 친절하게 답변해 드립니다.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 빠른 추천 질문 칩 -->
+            <div class="quick-questions-wrap">
+                <span class="quick-label"><i class="fa-solid fa-wand-magic-sparkles"></i> 추천 질문:</span>
+                <button class="quick-chip" data-q="예산 대비 가장 안전한 안심 동네 TOP 3는 어디야?">💡 가성비 최고 안심 동네 TOP 3는?</button>
+                <button class="quick-chip" data-q="강남구는 왜 돈을 많이 써도 범죄가 많아?">💡 강남구는 왜 돈을 써도 범죄가 많을까?</button>
+                <button class="quick-chip" data-q="내년도 방범 예산은 어떤 동네에 먼저 몰아줘야 할까?">💡 내년도 예산은 어디에 먼저 줘야 해?</button>
+                <button class="quick-chip" data-q="조용한 주택가 동네들은 어떻게 스스로 안전을 유지해?">💡 조용한 주택가 동네들의 비결은?</button>
+            </div>
+
+            <!-- 질문 입력창 -->
+            <div class="qa-input-box">
+                <input type="text" id="userQuestionInput" class="qa-input" placeholder="궁금한 질문을 입력하세요 (예: 경기도에서 가장 안전한 동네는 어디야?)" />
+                <button id="btnSendQuestion" class="btn btn-primary qa-send-btn">
+                    <i class="fa-solid fa-paper-plane"></i> 질문하기
+                </button>
+            </div>
+
+            <!-- AI 답변 표시 박스 -->
+            <div class="qa-answer-container" id="qaAnswerContainer" style="display: none;">
+                <div class="qa-loading" id="qaLoading" style="display: none;">
+                    <div class="spinner-sm"></div>
+                    <span>인공지능이 전국 데이터셋을 살펴보고 답변을 작성하고 있습니다...</span>
+                </div>
+                <div class="qa-answer-bubble markdown-body" id="qaAnswerBubble">
+                    <!-- AI 답변 렌더링 -->
+                </div>
+            </div>
+        </section>
 
         <!-- 토스트 메시지 & 푸터 -->
         <div class="toast-message" id="toastMessage"></div>
