@@ -1,6 +1,6 @@
 /**
- * AI Crime Budget & Rate Paradox Analyzer - Hypothesis Testing Script
- * Pure JavaScript Implementation (No external trendline plugin dependency)
+ * AI Crime Budget & Rate Easy Analyzer - User-Friendly Frontend Script
+ * 초보자 및 일반인을 위한 쉬운 언어와 인터랙션
  */
 
 window.correlationChartInstance = null;
@@ -43,7 +43,7 @@ function initEventListeners() {
 }
 
 /**
- * 통화/예산 금액 단위 자동 축약 포맷팅 함수 (1억 원 이상 / 1만 원 단위)
+ * 억 원 및 만 원 단위 쉬운 금액 포맷
  */
 function formatKoreanCurrency(amount) {
     if (isNaN(amount) || amount === null || amount === undefined) return "-";
@@ -64,7 +64,7 @@ function formatKoreanCurrency(amount) {
 }
 
 /**
- * 엑셀 데이터 비동기 로드
+ * 데이터 로드
  */
 async function fetchExcelData() {
     const countBadge = document.getElementById("dataCountBadge");
@@ -79,7 +79,7 @@ async function fetchExcelData() {
             showToast(data.error, "error");
             if (fileBadge) {
                 fileBadge.className = "file-status-badge badge-inactive";
-                fileBadgeText.textContent = "엑셀 오류: " + data.error;
+                fileBadgeText.textContent = "파일 오류: " + data.error;
             }
             return;
         }
@@ -87,16 +87,16 @@ async function fetchExcelData() {
         currentRawData = data;
         if (fileBadge) {
             fileBadge.className = "file-status-badge badge-active";
-            fileBadgeText.innerHTML = `데이터 파일: <strong>${data.filename}</strong> (${data.total_rows}개 지자체)`;
+            fileBadgeText.innerHTML = `분석 파일: <strong>${data.filename}</strong> (총 ${data.total_rows}개 동네)`;
         }
-        if (countBadge) countBadge.textContent = `${data.total_rows}건 로드됨`;
+        if (countBadge) countBadge.textContent = `${data.total_rows}개 동네 로드됨`;
 
         renderPreviewTable(data.records, data.mapping);
         runAnalysis();
 
     } catch (err) {
         console.error("데이터 로드 오류:", err);
-        showToast("데이터를 불러오는 중 오류가 발생했습니다.", "error");
+        showToast("데이터를 읽어오는 중 문제가 발생했습니다.", "error");
     }
 }
 
@@ -114,7 +114,7 @@ function renderPreviewTable(records, mapping) {
     records.forEach(row => {
         const rawBudget = Number(row[budCol]) || 0;
         const formattedBudget = formatKoreanCurrency(rawBudget);
-        const crimeVal = row[crmCol] !== undefined ? Number(row[crmCol]).toLocaleString() : "-";
+        const crimeVal = row[crmCol] !== undefined ? Number(row[crmCol]).toLocaleString() + "건" : "-";
         const popVal = popCol && row[popCol] ? Number(row[popCol]).toLocaleString() + "명" : "-";
         const noteVal = notCol && row[notCol] ? row[notCol] : "-";
 
@@ -132,7 +132,7 @@ function renderPreviewTable(records, mapping) {
 }
 
 /**
- * 순수 자바스크립트 1차 선형 회귀(최소자승법) 추세선 연산
+ * 1차 선형 회귀 흐름선 연산
  */
 function calculateLinearRegression(points) {
     if (!points || points.length < 2) return [];
@@ -165,9 +165,9 @@ function calculateLinearRegression(points) {
 }
 
 /**
- * Chart.js 4사분면 산점도 및 선형 회귀 추세선 렌더링
+ * 쉬운 설명용 4사분면 그래프 렌더링
  */
-function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
+function renderChart(chartPoints, xLabel, yLabel) {
     const canvas = document.getElementById("correlationChart");
     if (!canvas) return;
 
@@ -178,8 +178,6 @@ function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
 
     const trendlinePoints = calculateLinearRegression(chartPoints);
     const ctx = canvas.getContext("2d");
-
-    // 4사분면 색상 및 스타일 맵핑
     const pointColors = chartPoints.map(p => p.quad_color || "#2563eb");
 
     window.correlationChartInstance = new Chart(ctx, {
@@ -187,17 +185,17 @@ function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
         data: {
             datasets: [
                 {
-                    label: "지자체별 관측치",
+                    label: "우리 동네 위치",
                     data: chartPoints,
                     backgroundColor: pointColors,
                     borderColor: "#ffffff",
-                    borderWidth: 1.5,
+                    borderWidth: 2,
                     pointRadius: 7,
                     pointHoverRadius: 10,
                     order: 2
                 },
                 {
-                    label: "1차 회귀 추세선",
+                    label: "전체적인 평균 흐름선",
                     data: trendlinePoints,
                     type: "line",
                     borderColor: "#dc2626",
@@ -212,7 +210,7 @@ function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false, // 440px 높이 준수
+            maintainAspectRatio: false,
             interaction: {
                 intersect: false,
                 mode: "nearest"
@@ -231,19 +229,19 @@ function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
                             if (raw.region) {
                                 return `[${raw.region}] ${raw.quad_label}`;
                             }
-                            return "회귀 추세선";
+                            return "전체적인 평균 흐름선";
                         },
                         label: function (context) {
                             const raw = context.raw;
                             if (raw.region) {
                                 const formattedBudget = formatKoreanCurrency(raw.x);
                                 return [
-                                    ` 예산: ${formattedBudget} (${raw.x.toLocaleString()}원)`,
-                                    ` 범죄지표: ${raw.y.toFixed(1)}건`,
-                                    raw.note ? ` 특성: ${raw.note}` : ""
+                                    ` 💰 예산: ${formattedBudget}`,
+                                    ` 🚨 범죄: ${raw.y.toFixed(1)}건`,
+                                    raw.note ? ` 📍 특성: ${raw.note}` : ""
                                 ].filter(Boolean);
                             } else {
-                                return ` 추세선 예측치 (예산: ${formatKoreanCurrency(raw.x)}, 지표: ${raw.y.toFixed(1)})`;
+                                return ` 평균 흐름 (예산: ${formatKoreanCurrency(raw.x)}, 예상 범죄: ${raw.y.toFixed(1)}건)`;
                             }
                         }
                     }
@@ -253,14 +251,13 @@ function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
                 x: {
                     title: {
                         display: true,
-                        text: xLabel || "지자체 범죄예방 예산",
-                        font: { size: 13, weight: "600" },
+                        text: xLabel || "방범 예산 (오른쪽으로 갈수록 돈을 많이 씀)",
+                        font: { size: 12, weight: "600" },
                         color: "#475569"
                     },
                     grid: { color: "#f1f5f9" },
                     ticks: {
                         color: "#64748b",
-                        font: { size: 11 },
                         callback: function (value) {
                             return formatKoreanCurrency(value);
                         }
@@ -269,14 +266,13 @@ function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
                 y: {
                     title: {
                         display: true,
-                        text: yLabel || "범죄 발생 수치",
-                        font: { size: 13, weight: "600" },
+                        text: yLabel || "범죄 발생 건수 (위로 갈수록 사건이 많음)",
+                        font: { size: 12, weight: "600" },
                         color: "#475569"
                     },
                     grid: { color: "#f1f5f9" },
                     ticks: {
                         color: "#64748b",
-                        font: { size: 11 },
                         callback: function (value) {
                             return value.toLocaleString() + "건";
                         }
@@ -288,7 +284,7 @@ function renderChart(chartPoints, xLabel, yLabel, xMedian, yMedian) {
 }
 
 /**
- * 가설 실증 분석 실행 (/generate)
+ * 분석 실행
  */
 async function runAnalysis() {
     const analysisMode = document.getElementById("analysisMode").value;
@@ -301,7 +297,7 @@ async function runAnalysis() {
     const reportBadge = document.getElementById("reportModeBadge");
 
     if (reportBadge) {
-        reportBadge.textContent = analysisMode === "A" ? "모드 A: 가설 실증·역인과성 학술 검증" : "모드 B: 4사분면 지자체 맞춤 정책 컨설팅";
+        reportBadge.textContent = analysisMode === "A" ? "쉬운 해설형" : "동네 처방전형";
     }
 
     if (loadingOverlay) loadingOverlay.style.display = "block";
@@ -327,13 +323,9 @@ async function runAnalysis() {
             return;
         }
 
-        // 가설 검증 결과 및 4사분면 요약 갱신
         updateHypothesisUI(resData.stats);
+        renderChart(resData.chart_data, resData.stats.x_label, resData.stats.y_label);
 
-        // 4사분면 Chart.js 렌더링
-        renderChart(resData.chart_data, resData.stats.x_label, resData.stats.y_label, resData.stats.x_median, resData.stats.y_median);
-
-        // AI 마크다운 리포트 렌더링
         currentGeneratedMarkdown = resData.report_markdown;
         if (typeof marked !== "undefined") {
             reportViewer.innerHTML = marked.parse(currentGeneratedMarkdown);
@@ -341,7 +333,7 @@ async function runAnalysis() {
             reportViewer.innerText = currentGeneratedMarkdown;
         }
 
-        showToast("가설 검증 및 AI 리포트 생성이 완료되었습니다.", "success");
+        showToast("분석 결과와 AI 설명이 준비되었습니다!", "success");
 
     } catch (err) {
         console.error("분석 에러:", err);
@@ -353,22 +345,23 @@ async function runAnalysis() {
 }
 
 /**
- * 가설 검증 배너 및 4사분면 지자체 리스트 업데이트
+ * 쉬운 UI 텍스트 업데이트
  */
 function updateHypothesisUI(stats) {
     const verdictBanner = document.getElementById("verdictBanner");
     const verdictTitle = document.getElementById("verdictTitle");
     const verdictDesc = document.getElementById("verdictDesc");
     const valR = document.getElementById("valCorrelationR");
+    const valRDesc = document.getElementById("valCorrelationRDesc");
     const valDelta = document.getElementById("valDeltaPer100M");
     const valModelCount = document.getElementById("valModelCount");
 
     if (verdictTitle) verdictTitle.textContent = stats.hypothesis_verdict;
     if (verdictDesc) {
         if (stats.r > 0) {
-            verdictDesc.textContent = `피어슨 상관계수 r = ${stats.r.toFixed(4)}로, 고위험 취약지에 사후 예산이 집중 배정되는 '치안 예산의 역설'이 관측되었습니다.`;
+            verdictDesc.textContent = "돈을 써서 범죄가 늘어난 게 아니라, 사람이 붐비고 위험한 번화가에 구청과 경찰이 예산을 더 많이 쏟아붓고 있기 때문입니다.";
         } else {
-            verdictDesc.textContent = `피어슨 상관계수 r = ${stats.r.toFixed(4)}로, 예산 증액에 따른 범죄 억제 경향이 유의미하게 확인되었습니다.`;
+            verdictDesc.textContent = "예산을 많이 들인 동네일수록 범죄 예방 시설이 잘 갖춰져 범죄가 줄어드는 좋은 효과가 나타나고 있습니다.";
         }
     }
 
@@ -377,8 +370,11 @@ function updateHypothesisUI(stats) {
     }
 
     if (valR) {
-        valR.textContent = (stats.r >= 0 ? "+" : "") + stats.r.toFixed(4);
+        valR.textContent = (stats.r >= 0 ? "+" : "") + stats.r.toFixed(2);
         valR.style.color = stats.r >= 0 ? "#b45309" : "#047857";
+    }
+    if (valRDesc) {
+        valRDesc.textContent = stats.r > 0 ? "예산 많을수록 범죄도 많음" : "예산 많을수록 범죄 줄어듦";
     }
 
     if (valDelta) {
@@ -387,9 +383,8 @@ function updateHypothesisUI(stats) {
 
     const q = stats.quadrants || {};
     const q4Count = q.q4_effective ? q.q4_effective.length : 0;
-    if (valModelCount) valModelCount.textContent = `${q4Count}개 지자체`;
+    if (valModelCount) valModelCount.textContent = `${q4Count}개 동네`;
 
-    // 4사분면 지자체 리스트 텍스트 갱신
     const elQ4 = document.getElementById("listQ4");
     const elQ2 = document.getElementById("listQ2");
     const elQ1 = document.getElementById("listQ1");
@@ -403,19 +398,19 @@ function updateHypothesisUI(stats) {
 
 function copyReportToClipboard() {
     if (!currentGeneratedMarkdown) {
-        showToast("복사할 리포트가 없습니다.", "info");
+        showToast("복사할 내용이 없습니다.", "info");
         return;
     }
     navigator.clipboard.writeText(currentGeneratedMarkdown).then(() => {
-        showToast("리포트가 클립보드에 복사되었습니다!", "success");
+        showToast("설명글이 클립보드에 복사되었습니다!", "success");
     }).catch(() => {
-        showToast("클립보드 복사 중 오류가 발생했습니다.", "error");
+        showToast("복사 중 오류가 발생했습니다.", "error");
     });
 }
 
 function downloadMarkdownFile() {
     if (!currentGeneratedMarkdown) {
-        showToast("다운로드할 리포트가 없습니다.", "info");
+        showToast("다운로드할 내용이 없습니다.", "info");
         return;
     }
     const blob = new Blob([currentGeneratedMarkdown], { type: "text/markdown;charset=utf-8" });
@@ -423,12 +418,12 @@ function downloadMarkdownFile() {
     const a = document.createElement("a");
     const now = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `Crime_Budget_Hypothesis_Report_${now}.md`;
+    a.download = `동네_범죄예방_분석리포트_${now}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast("마크다운(.md) 파일이 다운로드되었습니다.", "success");
+    showToast("파일(.md) 다운로드가 완료되었습니다.", "success");
 }
 
 function showToast(message, type = "info") {

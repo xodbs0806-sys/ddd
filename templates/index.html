@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>가설 검증: 예산이 높을수록 그 지역 범죄율이 낮아질까?</title>
+    <title>동네에 예산을 많이 쓰면 정말 범죄가 줄어들까?</title>
     <!-- Chart.js 최신 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Markdown 파서 CDN -->
@@ -15,85 +15,88 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- 1. 대시보드 헤더: 가설 중심 타이틀 -->
+        <!-- 1. 쉬운 헤더 -->
         <header class="dashboard-header">
             <div class="header-content">
                 <div class="title-area">
-                    <span class="system-badge"><i class="fa-solid fa-magnifying-glass-chart"></i> 공공 치안 정책 가설 실증 검증 시스템</span>
-                    <h1>"예산이 높을수록 그 지역 범죄율은 낮아질까?"</h1>
-                    <p class="subtitle">지자체별 2025년 치안 예산 집행 규모와 범죄 발생 지표 간의 수학적 상관관계 및 4사분면 AI 실증 진단</p>
+                    <span class="system-badge"><i class="fa-solid fa-shield-cat"></i> 쉽게 보는 우리 동네 안전 빅데이터</span>
+                    <h1>"동네에 방범 예산을 많이 쓰면, 정말 범죄가 줄어들까요?"</h1>
+                    <p class="subtitle">실제 지자체 예산과 범죄 발생 통계를 바탕으로, 예산이 범죄를 줄이는 데 진짜 효과가 있는지 확인해 봅니다.</p>
                 </div>
                 <div class="file-status-badge {% if file_status.found %}badge-active{% else %}badge-inactive{% endif %}" id="fileStatusBadge">
                     <i class="fa-solid {% if file_status.found %}fa-file-excel{% else %}fa-circle-exclamation{% endif %}"></i>
                     <span id="fileStatusText">
                         {% if file_status.found %}
-                            데이터 파일: <strong>{{ file_status.filename }}</strong>
+                            분석 파일: <strong>{{ file_status.filename }}</strong>
                         {% else %}
-                            엑셀 파일 없음 (crime_data.xlsx 필요)
+                            엑셀 파일 없음
                         {% endif %}
                     </span>
                 </div>
             </div>
         </header>
 
-        <!-- 2. 가설 검증 결과 배너 (Verdict Banner) -->
+        <!-- 2. 한눈에 보는 결론 배너 -->
         <section class="verdict-banner card" id="verdictBanner">
             <div class="verdict-left">
-                <div class="verdict-tag"><i class="fa-solid fa-scale-balanced"></i> 핵심 가설 검증 1차 판정</div>
-                <div class="verdict-title" id="verdictTitle">데이터 분석 중...</div>
-                <p class="verdict-desc" id="verdictDesc">예산액($X$)과 범죄율($Y$) 간의 피어슨 상관계수($r$) 및 4사분면 분포를 통해 가설을 실증합니다.</p>
+                <div class="verdict-tag"><i class="fa-solid fa-circle-question"></i> 한눈에 보는 핵심 결론</div>
+                <div class="verdict-title" id="verdictTitle">데이터를 분석하고 있습니다...</div>
+                <p class="verdict-desc" id="verdictDesc">예산과 범죄율 데이터를 꼼꼼히 비교하여 쉬운 설명으로 알려드립니다.</p>
             </div>
             <div class="verdict-stats">
                 <div class="v-stat-box">
-                    <span class="v-label">피어슨 상관계수 ($r$)</span>
+                    <span class="v-label">예산과 범죄의 연결점</span>
                     <span class="v-value" id="valCorrelationR">-</span>
+                    <span class="v-sub" id="valCorrelationRDesc">0에 가까울수록 무관</span>
                 </div>
                 <div class="v-stat-box">
-                    <span class="v-label">1억 원당 범죄율 변동</span>
+                    <span class="v-label">예산 1억 원 더 쓸 때</span>
                     <span class="v-value" id="valDeltaPer100M">-</span>
+                    <span class="v-sub">범죄 변화 추정치</span>
                 </div>
                 <div class="v-stat-box highlight-box">
-                    <span class="v-label">★ 가설 적중 모범 지자체</span>
+                    <span class="v-label">★ 돈값 한 안심 동네</span>
                     <span class="v-value" id="valModelCount">-</span>
+                    <span class="v-sub">예산 투입 성공 지역</span>
                 </div>
             </div>
         </section>
 
-        <!-- 3. 제어 패널 (컨트롤 영역) -->
+        <!-- 3. 조건 선택 창 -->
         <section class="control-panel card">
             <div class="panel-header">
-                <h2><i class="fa-solid fa-sliders"></i> 가설 검증 변수 및 분석 조건 설정</h2>
+                <h2><i class="fa-solid fa-sliders"></i> 어떻게 비교해 볼까요?</h2>
                 <button class="btn btn-secondary btn-sm" id="btnReloadData">
                     <i class="fa-solid fa-rotate-right"></i> 데이터 다시 읽기
                 </button>
             </div>
 
             <div class="control-grid">
-                <!-- 분석 기준/통제 변수 선택 -->
+                <!-- 비교 기준 선택 -->
                 <div class="form-group">
-                    <label for="controlType"><i class="fa-solid fa-calculator"></i> 분석 변수 표준화 선택</label>
+                    <label for="controlType"><i class="fa-solid fa-users"></i> 비교 기준</label>
                     <select id="controlType" class="form-select">
-                        <option value="total" selected>단순 총액 비교 (총 예산 vs 총 범죄발생수)</option>
-                        <option value="per_capita">인구 1인당 표준화 (1인당 예산 vs 1만명당 범죄율)</option>
+                        <option value="total" selected>1. 동네 전체 총액으로 비교하기 (총 예산 vs 총 범죄 수)</option>
+                        <option value="per_capita">2. 주민 1명 기준으로 공평하게 비교하기 (1인당 예산 vs 인구 대비 범죄율)</option>
                     </select>
                 </div>
 
-                <!-- AI 분석 리포트 모드 -->
+                <!-- 리포트 설명 모드 -->
                 <div class="form-group">
-                    <label for="analysisMode"><i class="fa-solid fa-brain"></i> AI 분석 리포트 유형</label>
+                    <label for="analysisMode"><i class="fa-solid fa-comment-dots"></i> AI 설명 스타일</label>
                     <select id="analysisMode" class="form-select">
-                        <option value="A" selected>Prompt A (가설 실증·역인과성 학술 검증형)</option>
-                        <option value="B">Prompt B (4사분면 지자체 맞춤 정책 컨설팅형)</option>
+                        <option value="A" selected>쉬운 해설형 (왜 이런 결과가 나왔는지 알기 쉽게 설명)</option>
+                        <option value="B">동네 처방전형 (우리 동네 예산 어디에 써야 범죄 줄어들지 조언)</option>
                     </select>
                 </div>
 
-                <!-- 필터 및 실행 버튼 -->
+                <!-- 번화가 제외 체크박스 & 실행 버튼 -->
                 <div class="form-group action-group">
                     <label class="checkbox-label">
-                        <input type="checkbox" id="chkExcludeCommercial"> 도심 상업/유흥 밀집지 제외 (순수 주거지 검증)
+                        <input type="checkbox" id="chkExcludeCommercial"> 강남·명동 같은 번화가/유흥가 빼고 '조용한 주거지'만 비교하기
                     </label>
                     <button class="btn btn-primary" id="btnAnalyze">
-                        <i class="fa-solid fa-bolt"></i> 가설 실증 및 AI 리포트 생성
+                        <i class="fa-solid fa-magnifying-glass"></i> 결과 분석하고 AI 설명 듣기
                     </button>
                 </div>
             </div>
@@ -103,8 +106,8 @@
                 <div class="accordion-header" id="accordionToggle">
                     <div class="accordion-title">
                         <i class="fa-solid fa-table-list"></i>
-                        <span>로드된 엑셀 데이터 미리보기 (예산: '억 원' 병기)</span>
-                        <span class="count-badge" id="dataCountBadge">0건 로드됨</span>
+                        <span>우리 동네 원본 데이터 펼쳐보기</span>
+                        <span class="count-badge" id="dataCountBadge">0개 동네 로드됨</span>
                     </div>
                     <i class="fa-solid fa-chevron-down accordion-icon" id="accordionArrow"></i>
                 </div>
@@ -113,11 +116,11 @@
                         <table class="data-table" id="previewTable">
                             <thead>
                                 <tr id="tableHeaderRow">
-                                    <th>지자체명</th>
-                                    <th>범죄예방 예산 (원화 / 억 원 병기)</th>
-                                    <th>범죄 발생 수치</th>
-                                    <th>인구수</th>
-                                    <th>특이사항 (상권/주거 특성)</th>
+                                    <th>동네 이름</th>
+                                    <th>범죄예방 예산 (억 원 단위)</th>
+                                    <th>범죄 발생 건수</th>
+                                    <th>주민 수</th>
+                                    <th>동네 특성</th>
                                 </tr>
                             </thead>
                             <tbody id="tableBody">
@@ -131,100 +134,97 @@
             </div>
         </section>
 
-        <!-- 4. 4사분면 요약 카드 그리드 -->
+        <!-- 4. 4가지 동네 유형 카드 (일반인 눈높이 표현) -->
         <section class="quadrant-cards-grid">
-            <!-- 4사분면: 가설 적중 모범 구역 -->
+            <!-- 4사분면: 1등 안심 동네 -->
             <div class="quad-card card border-q4">
                 <div class="quad-header">
-                    <span class="quad-badge badge-q4"><i class="fa-solid fa-star"></i> 제4사분면</span>
-                    <h3>가설 적중 모범 구역</h3>
+                    <span class="quad-badge badge-q4"><i class="fa-solid fa-trophy"></i> 1등 안심</span>
+                    <h3>예산 듬뿍, 범죄는 뚝!</h3>
                 </div>
-                <p class="quad-desc">고예산 · 저범죄 (예산 투입 성과 달성 지역)</p>
+                <p class="quad-desc">돈을 많이 써서 범죄를 확실하게 줄인 모범 동네</p>
                 <div class="quad-list" id="listQ4">-</div>
             </div>
 
-            <!-- 2사분면: 치안 사각지대 -->
+            <!-- 2사분면: 예산 지원 시급 동네 -->
             <div class="quad-card card border-q2">
                 <div class="quad-header">
-                    <span class="quad-badge badge-q2"><i class="fa-solid fa-triangle-exclamation"></i> 제2사분면</span>
-                    <h3>치안 사각지대</h3>
+                    <span class="quad-badge badge-q2"><i class="fa-solid fa-hand-holding-dollar"></i> 지원 시급</span>
+                    <h3>범죄는 많은데 예산 부족</h3>
                 </div>
-                <p class="quad-desc">저예산 · 고범죄 (긴급 예산 지원 필요 지역)</p>
+                <p class="quad-desc">범죄가 많이 일어나는데 예산이 모자라 도움이 필요한 동네</p>
                 <div class="quad-list" id="listQ2">-</div>
             </div>
 
-            <!-- 1사분면: 역인과성 집중 구역 -->
+            <!-- 1사분면: 초집중 번화가 동네 -->
             <div class="quad-card card border-q1">
                 <div class="quad-header">
-                    <span class="quad-badge badge-q1"><i class="fa-solid fa-arrow-right-arrow-left"></i> 제1사분면</span>
-                    <h3>역인과성 집중 구역</h3>
+                    <span class="quad-badge badge-q1"><i class="fa-solid fa-city"></i> 번화가</span>
+                    <h3>사람 많아 예산도, 사건도 많음</h3>
                 </div>
-                <p class="quad-desc">고예산 · 고범죄 (위험지역 사후 집중 투입)</p>
+                <p class="quad-desc">유동인구와 술집이 많아 위험해서 예산을 집중 투입 중인 동네</p>
                 <div class="quad-list" id="listQ1">-</div>
             </div>
 
-            <!-- 3사분면: 자연 평온 구역 -->
+            <!-- 3사분면: 자연 평온 동네 -->
             <div class="quad-card card border-q3">
                 <div class="quad-header">
-                    <span class="quad-badge badge-q3"><i class="fa-solid fa-shield-halved"></i> 제3사분면</span>
-                    <h3>자연 평온 구역</h3>
+                    <span class="quad-badge badge-q3"><i class="fa-solid fa-house-chimney"></i> 평온 주거</span>
+                    <h3>적은 돈으로도 평온한 동네</h3>
                 </div>
-                <p class="quad-desc">저예산 · 저범죄 (주거 베드타운 자체 안전 유지)</p>
+                <p class="quad-desc">조용한 주택가라 큰 사건 없이 스스로 안전을 유지하는 동네</p>
                 <div class="quad-list" id="listQ3">-</div>
             </div>
         </section>
 
-        <!-- 5. Chart.js 4사분면 산점도 및 선형 회귀 추세선 -->
+        <!-- 5. Chart.js 4개 동네 유형 한눈에 보기 그래프 -->
         <section class="chart-section card">
             <div class="section-header">
-                <h2><i class="fa-solid fa-chart-scatter"></i> 4사분면 매트릭스 산점도 & 선형 회귀 추세선</h2>
+                <h2><i class="fa-solid fa-chart-scatter"></i> 한눈에 보는 우리 동네 위치 그래프</h2>
                 <div class="chart-quadrant-legends">
-                    <span class="legend-chip chip-q4"><i class="fa-solid fa-circle"></i> 가설적중 모범</span>
-                    <span class="legend-chip chip-q2"><i class="fa-solid fa-circle"></i> 치안 사각지대</span>
-                    <span class="legend-chip chip-q1"><i class="fa-solid fa-circle"></i> 역인과성 구역</span>
-                    <span class="legend-chip chip-q3"><i class="fa-solid fa-circle"></i> 자연 평온</span>
-                    <span class="legend-chip chip-trend"><i class="fa-solid fa-minus"></i> 회귀 추세선</span>
+                    <span class="legend-chip chip-q4"><i class="fa-solid fa-circle"></i> 1등 안심 동네</span>
+                    <span class="legend-chip chip-q2"><i class="fa-solid fa-circle"></i> 예산 부족 동네</span>
+                    <span class="legend-chip chip-q1"><i class="fa-solid fa-circle"></i> 번화가 집중 동네</span>
+                    <span class="legend-chip chip-q3"><i class="fa-solid fa-circle"></i> 자연 평온 동네</span>
+                    <span class="legend-chip chip-trend"><i class="fa-solid fa-minus"></i> 전체적인 흐름선</span>
                 </div>
             </div>
 
-            <!-- 규격: height: 440px 반응형 캔버스 래퍼 -->
             <div class="chart-container">
                 <canvas id="correlationChart"></canvas>
             </div>
             <div class="chart-footer-note">
-                <i class="fa-solid fa-lightbulb"></i> 점을 마우스 오버하면 지자체명, 소속 사분면, <strong>'억 원'</strong> 단위 예산 및 범죄율 상세 정보를 확인할 수 있습니다.
+                <i class="fa-solid fa-hand-pointer"></i> 점에 마우스를 올리면 <strong>동네 이름, 예산 금액, 범죄 건수</strong>를 알기 쉽게 보여줍니다.
             </div>
         </section>
 
-        <!-- 6. AI 가설 심층 리포트 영역 -->
+        <!-- 6. AI 친절한 설명 리포트 -->
         <section class="report-section card">
             <div class="report-header">
                 <div class="report-title-area">
-                    <h2><i class="fa-solid fa-file-contract"></i> AI 가설 실증 검증 및 정책 제언 리포트</h2>
-                    <span class="report-badge" id="reportModeBadge">모드 A: 가설 실증·역인과성 학술 검증</span>
+                    <h2><i class="fa-solid fa-robot"></i> 인공지능(AI)이 쉽게 풀어주는 분석 결과</h2>
+                    <span class="report-badge" id="reportModeBadge">쉬운 해설형</span>
                 </div>
                 <div class="report-actions">
                     <button class="btn btn-outline btn-sm" id="btnCopyReport">
-                        <i class="fa-regular fa-copy"></i> 리포트 복사
+                        <i class="fa-regular fa-copy"></i> 글 복사하기
                     </button>
                     <button class="btn btn-outline btn-sm" id="btnDownloadReport">
-                        <i class="fa-solid fa-download"></i> Markdown (.md) 저장
+                        <i class="fa-solid fa-download"></i> 파일(.md) 저장
                     </button>
                 </div>
             </div>
 
-            <!-- 로딩 애니메이션 -->
             <div class="loading-overlay" id="loadingOverlay" style="display: none;">
                 <div class="spinner"></div>
-                <p class="loading-text">Gemini AI가 "예산 증액 $\rightarrow$ 범죄 감소" 가설을 4사분면 실측치로 검증 중입니다...</p>
-                <span class="loading-sub">역인과성 규명 및 지자체별 치안 예산 최적 배분 전략 수립 중</span>
+                <p class="loading-text">인공지능이 "예산을 많이 쓰면 범죄가 줄어들까?"에 대한 쉬운 설명을 작성하고 있습니다...</p>
+                <span class="loading-sub">누구나 알기 쉬운 일상 언어로 변환 중</span>
             </div>
 
-            <!-- 마크다운 리포트 결과 뷰어 -->
             <div class="report-viewer markdown-body" id="reportViewer">
                 <div class="report-placeholder">
-                    <i class="fa-regular fa-comments"></i>
-                    <p>상단의 <strong>[가설 실증 및 AI 리포트 생성]</strong> 버튼을 누르면 인공지능 분석 리포트가 이곳에 실시간 렌더링됩니다.</p>
+                    <i class="fa-regular fa-lightbulb"></i>
+                    <p>위의 <strong>[결과 분석하고 AI 설명 듣기]</strong> 버튼을 누르면 친절한 설명글이 여기에 나타납니다.</p>
                 </div>
             </div>
         </section>
@@ -232,13 +232,12 @@
         <!-- 토스트 알림 메시지 -->
         <div class="toast-message" id="toastMessage"></div>
 
-        <!-- 푸터 -->
         <footer class="dashboard-footer">
-            <p>AI Crime Budget & Rate Paradox Analyzer | Powered by Flask, Pandas, Chart.js & Google Gemini</p>
+            <p>우리 동네 범죄예방 예산과 안전 분석기 | 누구나 쉽게 보는 공공데이터</p>
         </footer>
     </div>
 
-    <!-- 프론트엔드 메인 로직 스크립트 -->
+    <!-- 스크립트 -->
     <script src="/static/js/app.js"></script>
 </body>
 </html>

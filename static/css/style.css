@@ -205,6 +205,13 @@ body {
     color: var(--text-primary);
 }
 
+.v-sub {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
 .highlight-box .v-value {
     color: #065f46;
 }

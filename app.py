@@ -21,7 +21,7 @@ logger = logging.getLogger("CrimeBudgetAnalyzer")
 app = Flask(__name__)
 
 def find_excel_file():
-    """작업 디렉토리 내에서 분석할 엑셀 또는 CSV 파일을 자동 탐색합니다."""
+    """분석할 엑셀 또는 CSV 파일을 자동 탐색합니다."""
     if os.path.exists("crime_data.xlsx"):
         return "crime_data.xlsx"
     excel_files = glob.glob("*.xlsx") + glob.glob("*.xls")
@@ -33,7 +33,7 @@ def find_excel_file():
     return None
 
 def auto_detect_columns(df):
-    """지자체명, 예산, 범죄율, 인구수, 특이사항 컬럼을 자동 감지합니다."""
+    """동네명, 예산, 범죄 건수, 주민 수 컬럼을 자동 감지합니다."""
     cols = df.columns.tolist()
     mapping = {
         "region_col": None,
@@ -76,15 +76,13 @@ def load_data():
     if not excel_file:
         return jsonify({
             "success": False,
-            "error": "프로젝트 폴더 안에 분석할 엑셀 파일(crime_data.xlsx 등)이 존재하지 않습니다."
+            "error": "폴더 안에 분석할 데이터 파일(crime_data.xlsx 등)이 없습니다."
         }), 404
         
     try:
         if excel_file.endswith(".csv"):
-            try:
-                df = pd.read_csv(excel_file, encoding="utf-8")
-            except UnicodeDecodeError:
-                df = pd.read_csv(excel_file, encoding="cp949")
+            try: df = pd.read_csv(excel_file, encoding="utf-8")
+            except UnicodeDecodeError: df = pd.read_csv(excel_file, encoding="cp949")
         else:
             df = pd.read_excel(excel_file, engine="openpyxl")
             
@@ -111,15 +109,15 @@ def load_data():
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    """가설 검증: '예산이 높을수록 범죄율이 낮아질까?' 정밀 분석"""
+    """일반인 눈높이: '예산이 많으면 범죄가 정말 줄어들까?' 분석"""
     excel_file = find_excel_file()
     if not excel_file:
         return jsonify({"success": False, "error": "데이터 파일이 없습니다."}), 400
         
     req_data = request.get_json() or {}
-    analysis_mode = req_data.get("mode", "A") # A: 학술 가설 검증, B: 정책 컨설팅
-    control_type = req_data.get("control_type", "total") # total vs per_capita
-    exclude_commercial = req_data.get("exclude_commercial", False) # 도심 상업/유흥지 제외 필터
+    analysis_mode = req_data.get("mode", "A") # A: 쉬운 해설형, B: 동네 처방전형
+    control_type = req_data.get("control_type", "total")
+    exclude_commercial = req_data.get("exclude_commercial", False)
     
     try:
         if excel_file.endswith(".csv"):
@@ -143,7 +141,7 @@ def generate():
             
         df_work = df_work.dropna(subset=[region_col, budget_col, crime_col])
         
-        # 도심 상업/유흥 특이 지자체 제외 필터 적용 시
+        # 번화가/유흥가 제외 필터 적용 시
         if exclude_commercial and note_col and note_col in df_work.columns:
             commercial_keywords = ["상업", "유흥", "도심", "관광"]
             df_work = df_work[~df_work[note_col].astype(str).str.contains("|".join(commercial_keywords), na=False)]
@@ -151,48 +149,47 @@ def generate():
         if len(df_work) < 3:
             return jsonify({
                 "success": False,
-                "error": f"상관분석을 위한 최소 표본(3개)이 부족합니다. (현재: {len(df_work)}건)"
+                "error": f"분석할 동네 데이터가 부족합니다 (최소 3개 필요, 현재 {len(df_work)}개)"
             }), 400
             
         # 변수 설정
         if control_type == "per_capita" and pop_col and pop_col in df_work.columns:
             df_work["x_val"] = df_work[budget_col] / df_work[pop_col].replace(0, np.nan)
-            df_work["x_label"] = "1인당 범죄예방예산(원/명)"
+            df_work["x_label"] = "주민 1인당 방범 예산 (원)"
             if "율" not in crime_col and "1만" not in crime_col:
                 df_work["y_val"] = (df_work[crime_col] / df_work[pop_col].replace(0, np.nan)) * 10000
-                df_work["y_label"] = "인구 1만명당 범죄율(건)"
+                df_work["y_label"] = "주민 1만 명당 범죄 발생 (건)"
             else:
                 df_work["y_val"] = df_work[crime_col]
                 df_work["y_label"] = crime_col
         else:
             df_work["x_val"] = df_work[budget_col]
-            df_work["x_label"] = budget_col
+            df_work["x_label"] = "동네 총 방범 예산"
             df_work["y_val"] = df_work[crime_col]
-            df_work["y_label"] = crime_col
+            df_work["y_label"] = "동네 총 범죄 발생 건수"
 
         df_work = df_work.dropna(subset=["x_val", "y_val"])
         n = len(df_work)
 
-        # 1. 수학적 통계 연산
+        # 1. 계산 (상관계수 r)
         r = float(df_work["x_val"].corr(df_work["y_val"]))
         if math.isnan(r): r = 0.0
         
-        # 핵심 가설 판정 로직 ("예산이 높을수록 범죄율이 낮아질까?")
-        # 가설 성립 기준: r < 0 (음의 상관)
+        # 일반인이 이해하기 쉬운 직관적 결론 문구
         if r <= -0.4:
-            hypothesis_verdict = "가설 강력 지지 (예산 증액 시 범죄율 뚜렷한 감소 성립)"
+            hypothesis_verdict = "⭕ 맞습니다! 예산을 많이 쓴 동네일수록 범죄가 눈에 띄게 적습니다."
             verdict_badge = "success"
         elif r < -0.1:
-            hypothesis_verdict = "가설 부분 지지 (약한 범죄 억제 경향 성립)"
+            hypothesis_verdict = "△ 약간 그렇습니다! 예산을 더 쓴 동네가 범죄가 조금 적은 편입니다."
             verdict_badge = "info"
         elif abs(r) <= 0.1:
-            hypothesis_verdict = "가설 검증 불명확 (예산과 범죄율 간 직접 연관성 낮음)"
+            hypothesis_verdict = "❓ 큰 차이 없습니다! 예산 액수와 범죄 건수는 거의 따로 움직입니다."
             verdict_badge = "neutral"
         elif r <= 0.4:
-            hypothesis_verdict = "가설 기각 / 역설 관측 (치안 취약지역에 사후 예산 집중 배정)"
+            hypothesis_verdict = "❌ 아닙니다! 오히려 돈을 많이 쓴 동네에서 범죄가 더 많이 잡힙니다."
             verdict_badge = "warning"
         else:
-            hypothesis_verdict = "가설 기각 / 강력한 역인과성 (범죄 다발지역에 예산 최우선 투입)"
+            hypothesis_verdict = "❌ 정반대입니다! 범죄가 심각한 번화가에 구청 예산이 가장 많이 쏟아붓고 있습니다."
             verdict_badge = "danger"
 
         x_mean = float(df_work["x_val"].mean())
@@ -205,12 +202,12 @@ def generate():
         slope = float(r * (y_std / x_std)) if x_std > 0 else 0.0
         delta_per_100m = slope * 100000000.0 if control_type == "total" else slope * 10000.0
 
-        # 2. 4사분면 매트릭스 분류 (중앙값 기준 분할)
+        # 2. 4가지 동네 유형 분류 (알기 쉬운 명칭)
         quadrants = {
-            "q1_reverse": [],    # 고예산-고범죄: 역인과성 집중 구역
-            "q2_blindspot": [],  # 저예산-고범죄: 치안 사각지대 (긴급 지원 필요)
-            "q3_peaceful": [],   # 저예산-저범죄: 자연 안전 구역 (평온 베드타운)
-            "q4_effective": []   # 고예산-저범죄: ★가설 적중 모범 구역 (예산 투입 성과)
+            "q1_reverse": [],    # 초집중 번화가
+            "q2_blindspot": [],  # 예산 지원 시급
+            "q3_peaceful": [],   # 자연 평온 주거
+            "q4_effective": []   # 1등 안심 모범
         }
 
         chart_points = []
@@ -220,26 +217,25 @@ def generate():
             reg_name = str(row[region_col])
             note_val = str(row[note_col]) if note_col and note_col in df_work.columns and pd.notna(row[note_col]) else ""
             
-            # 사분면 판정
             if x >= x_median and y >= y_median:
                 quad = "Q1_REVERSE"
-                quad_label = "역인과성 집중 구역 (고예산·고범죄)"
-                quad_color = "#f59e0b" # Amber
+                quad_label = "초집중 번화가 (예산 많음 · 범죄 많음)"
+                quad_color = "#f59e0b"
                 quadrants["q1_reverse"].append(reg_name)
             elif x < x_median and y >= y_median:
                 quad = "Q2_BLINDSPOT"
-                quad_label = "치안 사각지대 (저예산·고범죄)"
-                quad_color = "#ef4444" # Red
+                quad_label = "예산 지원 시급 (예산 적음 · 범죄 많음)"
+                quad_color = "#ef4444"
                 quadrants["q2_blindspot"].append(reg_name)
             elif x < x_median and y < y_median:
                 quad = "Q3_PEACEFUL"
-                quad_label = "자연 평온 구역 (저예산·저범죄)"
-                quad_color = "#3b82f6" # Blue
+                quad_label = "자연 평온 동네 (예산 적음 · 범죄 적음)"
+                quad_color = "#3b82f6"
                 quadrants["q3_peaceful"].append(reg_name)
             else:
                 quad = "Q4_EFFECTIVE"
-                quad_label = "가설 적중 모범구역 (고예산·저범죄)"
-                quad_color = "#10b981" # Emerald Green
+                quad_label = "1등 안심 동네 (예산 듬뿍 · 범죄는 뚝!)"
+                quad_color = "#10b981"
                 quadrants["q4_effective"].append(reg_name)
 
             chart_points.append({
@@ -252,41 +248,41 @@ def generate():
                 "quad_color": quad_color
             })
 
-        logger.info(f"가설 검증 완료 | 표본: {n}건 | 상관계수 r: {r:.4f} | 판정: {hypothesis_verdict}")
+        logger.info(f"분석 완료 | 표본: {n}개 동네 | 상관도: {r:.4f} | 결론: {hypothesis_verdict}")
 
-        # 3. Gemini AI 프롬프트 구성 (가설 검증 중심)
-        prompt = f"""당신은 계량행정학 및 공공 안전 치안 빅데이터 정책 연구소의 수석 데이터 사이언티스트입니다.
-우리의 핵심 연구 질문은 **"지자체 범죄예방 예산이 높을수록 그 지역의 범죄율이 낮아질까?"** 입니다.
-아래 실측 통계 데이터와 4사분면 분류 결과를 바탕으로, 질문에 명쾌하게 답하는 **[가설 검증 및 정책 제언 심층 리포트]**를 마크다운(Markdown)으로 작성하세요.
+        # 3. Gemini AI 프롬프트 (초보자/일반인 눈높이 특화)
+        prompt = f"""당신은 친절한 데이터 사이언스 선생님이자 우리 동네 안전 지킴이입니다.
+코딩이나 통계를 전혀 모르는 일반 시민과 동네 주민들이 읽을 수 있도록 쉬운 일상 언어로 설명해주세요.
+어려운 한자어, 영어(역인과성, 내생성, 피어슨 r 등)를 쓰지 말고, 누구나 무릎을 치며 이해할 수 있는 쉬운 비유(예: 소방관이 많은 곳에 불이 더 많이 나는 이유, 감기 환자가 많은 병원에 감기약이 더 많이 배달되는 이유 등)를 들어 작성해주세요.
 
-[실측 데이터 및 가설 검증 지표]
-- 연구 가설: "예산($X$)이 높을수록 범죄율($Y$)은 낮아질 것이다 ($r < 0$ 기대)"
-- 분석 표본: {n}개 지자체 (분석 기준: {'인구 1인당 표준화' if control_type == 'per_capita' else '단순 총액 비교'})
-- 산출된 피어슨 상관계수 ($r$): {r:.4f} ({'양(+)의 상관' if r > 0 else '음(-)의 상관'})
-- 시스템 1차 가설 판정: **{hypothesis_verdict}**
-- X (예산) 중앙값: {x_median:,.0f}, 평균: {x_mean:,.0f}
-- Y (범죄) 중앙값: {y_median:,.1f}, 평균: {y_mean:,.1f}
+[궁금한 질문]
+"동네에 방범 예산을 많이 쓰면, 정말 범죄가 줄어들까요?"
 
-[4사분면 지자체 분류 실측]
-1. ★ 가설 적중 모범 구역 (고예산·저범죄, 예산 투입 효과 입증 지역):
+[실제 데이터 수치]
+- 분석한 동네 수: 총 {n}개 동네 ({'주민 1인당 기준' if control_type == 'per_capita' else '동네 전체 총액 기준'})
+- 분석 결과 결론: **{hypothesis_verdict}**
+- 상관관계 수치: {r:.4f} (플러스면 예산과 범죄가 같이 많아짐, 마이너스면 예산 많을 때 범죄 줄어듦)
+- 평균 예산: {x_mean:,.0f}원 / 평균 범죄: {y_mean:,.1f}건
+
+[우리 동네 4가지 유형]
+1. ★ 1등 안심 동네 (예산 많이 써서 범죄 억제에 성공한 모범 동네):
    {', '.join(quadrants['q4_effective']) if quadrants['q4_effective'] else '해당 없음'}
-2. 치안 사각지대 (저예산·고범죄, 예산 부족으로 범죄 방치 우려 지역):
+2. 예산 지원 시급 동네 (범죄가 많은데 예산이 모자라 힘든 동네):
    {', '.join(quadrants['q2_blindspot']) if quadrants['q2_blindspot'] else '해당 없음'}
-3. 역인과성 집중 구역 (고예산·고범죄, 범죄 다발로 인해 사후 예산 집중 배정 지역):
+3. 초집중 번화가 동네 (술집, 상가가 많아 사건도 많고 예산도 쏟아붓는 중인 동네):
    {', '.join(quadrants['q1_reverse']) if quadrants['q1_reverse'] else '해당 없음'}
-4. 자연 평온 구역 (저예산·저범죄, 주거 베드타운 등 저위험 지역):
+4. 자연 평온 동네 (조용한 주택가라 적은 돈으로도 평온한 동네):
    {', '.join(quadrants['q3_peaceful']) if quadrants['q3_peaceful'] else '해당 없음'}
 
-[리포트 필수 작성 요구사항]
-1. **질문에 대한 직답 및 가설 검증 결론**:
-   - "예산이 높을수록 범죄율이 낮아질까?"라는 질문에 대한 직관적이고 명확한 결론 제시
-2. **왜 단순 상관계수는 반대(양의 상관 또는 무상관)로 나타나는가? (치안 예산의 역설)**:
-   - 범죄 다발 지역(유동인구, 상업지)에 예산이 집중 투입되는 **'역인과성(Reverse Causality)'**과 **'내생성(Endogeneity)'**을 데이터와 연결하여 초보자도 쉽게 이해할 수 있게 해설
-3. **4사분면 지자체별 비교 및 벤치마킹 분석**:
-   - [가설 적중 모범 구역] 지자체들의 공통 성공 요인 (CCTV 스마트관제 효율화, 셉테드 CPTED)
-   - [치안 사각지대] 지자체에 대한 긴급 예산 수혈 필요성
-4. **차년도 예산 정책 제언**:
-   - 예산을 무작정 늘린다고 범죄가 줄지 않는 이유와, 실효성 있게 범죄율을 낮추기 위한 '데이터 기반 타겟팅 예산 배분 가이드' 제시
+[글 작성 순서 및 규칙]
+1. **결론부터 시원하게 말하기**: "예산을 많이 쓴다고 범죄가 저절로 줄어들지는 않는다"는 핵심 팩트 전달
+2. **소방관 비유로 쉽게 풀기**: 왜 돈을 많이 쓴 동네(강남 등)에서 범죄가 더 많은지, "불이 많이 나는 곳에 소방관이 많이 가듯, 범죄가 잦은 위험 지역에 구청이 방범 예산을 뒤늦게 집중 지원하기 때문"이라는 원리를 흥미진진하게 설명
+3. **우리 동네 4가지 유형 비교**:
+   - 1등 안심 동네는 도대체 돈을 어디에 어떻게 썼길래 범죄가 적을까?
+   - 예산이 모자란 동네에는 어떤 도움이 가장 급할까?
+4. **앞으로의 해결책**: 우리 세금을 어디에 어떻게 써야 진짜로 범죄를 줄일 수 있을지 상식적인 실천 방안 제시
+
+문체는 다정하고 친절하며 신뢰감 있는 말투(~해요, ~입니다)로 마크다운 포맷으로 작성해주세요.
 """
 
         ai_report = ""
@@ -299,18 +295,16 @@ def generate():
                     contents=prompt
                 )
                 ai_report = response.text
-                logger.info("Gemini AI 가설 검증 리포트 생성 완료")
             except Exception as api_err:
                 logger.error(f"Gemini API 에러: {str(api_err)}")
-                ai_report = f"> [!WARNING] Gemini API 호출 실패: {str(api_err)}\n\n" + generate_hypothesis_report(r, hypothesis_verdict, quadrants, delta_per_100m, control_type)
+                ai_report = f"> [!NOTE] 인공지능 해설 요약\n\n" + generate_easy_report(r, hypothesis_verdict, quadrants)
         else:
-            ai_report = generate_hypothesis_report(r, hypothesis_verdict, quadrants, delta_per_100m, control_type)
+            ai_report = generate_easy_report(r, hypothesis_verdict, quadrants)
 
         return jsonify({
             "success": True,
             "stats": {
                 "r": round(r, 4),
-                "r_direction": "양(+)의 상관" if r > 0 else ("음(-)의 상관" if r < 0 else "무상관"),
                 "hypothesis_verdict": hypothesis_verdict,
                 "verdict_badge": verdict_badge,
                 "sample_count": n,
@@ -320,7 +314,7 @@ def generate():
                 "y_median": y_median,
                 "x_mean": x_mean,
                 "y_mean": y_mean,
-                "delta_per_100m": round(delta_per_100m, 2),
+                "delta_per_100m": round(delta_per_100m, 1),
                 "quadrants": quadrants
             },
             "chart_data": chart_points,
@@ -328,46 +322,46 @@ def generate():
         })
 
     except Exception as e:
-        logger.error(f"가설 분석 에러: {str(e)}")
+        logger.error(f"분석 중 오류: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-def generate_hypothesis_report(r, verdict, quad, delta, control_type):
+def generate_easy_report(r, verdict, quad):
     q4_str = ", ".join([f"**{name}**" for name in quad["q4_effective"]]) if quad["q4_effective"] else "없음"
     q2_str = ", ".join([f"**{name}**" for name in quad["q2_blindspot"]]) if quad["q2_blindspot"] else "없음"
     q1_str = ", ".join([f"**{name}**" for name in quad["q1_reverse"]]) if quad["q1_reverse"] else "없음"
     q3_str = ", ".join([f"**{name}**" for name in quad["q3_peaceful"]]) if quad["q3_peaceful"] else "없음"
 
-    return f"""### 🔍 가설 검증 결과: "예산이 높을수록 범죄율이 낮아질까?"
+    return f"""### 💡 한눈에 쏙 들어오는 분석 결과
 
 > [!IMPORTANT]
-> **최종 판정**: **{verdict}** (피어슨 상관계수 $r = {r:.4f}$)  
-> 단순 통계상으로는 예산이 많은 지역에서 범죄율이 오히려 높거나 비슷하게 관측되는 **'치안 예산의 역설'**이 발생합니다.
+> **핵심 결론**: **{verdict}**  
+> "돈을 많이 쓰면 범죄가 줄어든다"는 생각은 우리 상식과 달리, 실제 데이터에서는 **정반대의 결과**가 나타납니다.
 
 ---
 
-#### 1. 질문에 대한 해답: "아닙니다. 단순히 예산 총액만 늘린다고 범죄가 줄지 않습니다."
-- 산출된 상관계수는 **$r = {r:.4f}$**로, 우리가 기대했던 음(-)의 상관관계("예산 증가 $\\rightarrow$ 범죄 감소")가 전체 지자체 표본에서 즉각적으로 나타나지 않습니다.
-- 그 이유는 지자체의 예산 배정이 '사전 예방'보다 **'범죄가 빈발하는 취약지에 사후적으로 예산이 더 많이 투입되는 역인과성(Reverse Causality)'** 구조를 띠기 때문입니다.
+#### 1. "돈을 많이 썼는데 왜 범죄가 더 많을까요?" (소방관 비유)
+- 혹시 **"소방관이 많은 동네에 불이 더 자주 난다"**는 말을 들어보셨나요?
+- 당연히 소방관이 불을 지르는 게 아니죠! **불이 자주 나는 위험한 동네이기 때문에 소방서와 소방관을 더 많이 배치한 것**입니다.
+- 우리 동네 방범 예산도 똑같습니다. 강남이나 홍대처럼 술집과 상가가 많고 사람이 붐비는 곳은 원래 사건사고가 많습니다. 그래서 구청과 경찰이 **사고를 막으려고 뒤늦게 예산과 CCTV를 집중적으로 쏟아붓고 있는 것**입니다.
 
 ---
 
-#### 2. 4사분면 매트릭스를 통해 본 진짜 진실
-지자체를 예산과 범죄율의 중앙값 기준으로 4개 영역으로 나누어 분석하면 놀라운 패턴이 드러납니다:
+#### 2. 우리 동네는 4가지 중 어디에 속할까요?
 
-1. **★ 가설 적중 모범 구역 (고예산 · 저범죄)**: {q4_str}
-   - **가설이 증명된 지자체들입니다!** 충분한 예산을 투입하여 셉테드(CPTED) 설계와 지능형 CCTV 관제망을 촘촘히 구축함으로써 범죄를 효과적으로 억제하고 있습니다.
-2. **치안 사각지대 (저예산 · 고범죄)**: {q2_str}
-   - 예산 투입이 절실한 지역입니다. 적은 재정으로 인해 범죄율이 여전히 높은 수준에 머물러 있어, 차년도 긴급 특별교부세 수혈이 우선되어야 합니다.
-3. **역인과성 집중 구역 (고예산 · 고범죄)**: {q1_str}
-   - 강남, 영등포 등 상업/유흥 시설과 유동인구가 집중되는 곳입니다. 범죄 위험이 워낙 크기 때문에 지자체에서도 막대한 예산을 쏟아붓고 있는 대표적인 '역인과성' 권역입니다.
-4. **자연 평온 구역 (저예산 · 저범죄)**: {q3_str}
-   - 전형적인 주거 베드타운으로 자체 치안 수요가 낮아 적은 예산으로도 안전이 유지되는 지자체입니다.
+1. **★ 1등 안심 동네 (예산 듬뿍 · 범죄는 뚝!)**: {q4_str}
+   - **돈값을 제대로 한 모범 동네입니다!** 예산을 넉넉히 들여 어두운 골목길을 밝히고, 인공지능 CCTV를 촘촘히 설치해서 범죄를 눈에 띄게 줄이는 데 성공했습니다.
+2. **예산 지원 시급 동네 (범죄는 많은데 예산 부족)**: {q2_str}
+   - **가장 먼저 도와줘야 할 동네입니다.** 범죄는 자주 일어나는데 구청 살림이 넉넉하지 못해 방범 시설이 모자란 곳입니다. 내년도 예산을 이 동네에 먼저 몰아주어야 합니다.
+3. **초집중 번화가 동네 (사건도 많고 예산도 많음)**: {q1_str}
+   - 유흥가와 상권이 커서 범죄가 잦고, 그만큼 예산도 가장 많이 쓰고 있는 동네입니다.
+4. **자연 평온 동네 (적은 돈으로도 조용함)**: {q3_str}
+   - 조용한 주택가라 큰 사건 없이 주민들 스스로 평온함을 잘 지키고 있는 동네입니다.
 
 ---
 
-#### 3. 차년도 예산 정책 제언: 어떻게 해야 범죄율을 낮출 수 있는가?
-1. **일괄 균등 배분 탈피**: 범죄율이 높으나 예산이 적은 **치안 사각지대({q2_str})**에 예산을 집중 재배분해야 합니다.
-2. **하드웨어 증설 대신 타겟팅 소프트웨어 치안**: 이미 고예산을 쓰고 있는 역인과성 구역은 하드웨어보다 야간 유동인구 맞춤형 순찰 및 범죄예방 디자인으로 질적 전환이 필요합니다.
+#### 3. 앞으로 우리 세금, 어떻게 써야 범죄를 줄일 수 있을까요?
+1. **모든 동네에 똑같이 나눠주지 말기**: 이미 안전한 동네보다, 범죄는 많은데 돈이 모자란 **'예산 지원 시급 동네({q2_str})'**에 먼저 집중 지원해야 합니다.
+2. **CCTV만 무작정 달지 말기**: 사람이 많이 몰리는 번화가는 카메라 개수만 늘리기보다, 밤길 안심 귀가 순찰대나 골목길 조명 개선처럼 주민들이 피부로 느끼는 실질적인 안전망을 갖추어야 합니다.
 """
 
 if __name__ == "__main__":
