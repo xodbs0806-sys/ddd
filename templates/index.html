@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>동네에 예산을 많이 쓰면 정말 범죄가 줄어들까?</title>
+    <!-- Leaflet 지도 CDN (필수) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Chart.js 최신 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Markdown 파서 CDN -->
@@ -15,251 +18,137 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- 1. 쉬운 헤더 -->
+        <!-- 1. 심플 헤더 -->
         <header class="dashboard-header">
             <div class="header-content">
                 <div class="title-area">
-                    <span class="system-badge"><i class="fa-solid fa-map-location-dot"></i> 전국 229개 시·군·구 안전 빅데이터</span>
+                    <span class="system-badge"><i class="fa-solid fa-map-location-dot"></i> 대한민국 안전 지도 한눈에 보기</span>
                     <h1>"동네에 방범 예산을 많이 쓰면, 정말 범죄가 줄어들까요?"</h1>
-                    <p class="subtitle">대한민국 전국 지자체의 2025년 예산과 범죄 통계를 비교하여, 예산이 범죄를 줄이는 데 진짜 효과가 있는지 확인해 봅니다.</p>
                 </div>
-                <div class="file-status-badge {% if file_status.found %}badge-active{% else %}badge-inactive{% endif %}" id="fileStatusBadge">
-                    <i class="fa-solid {% if file_status.found %}fa-file-excel{% else %}fa-circle-exclamation{% endif %}"></i>
-                    <span id="fileStatusText">
-                        {% if file_status.found %}
-                            분석 파일: <strong>{{ file_status.filename }}</strong>
-                        {% else %}
-                            엑셀 파일 없음
-                        {% endif %}
-                    </span>
+                <div class="header-controls">
+                    <!-- 지역 선택 드롭다운 -->
+                    <div class="sido-selector-wrap">
+                        <label for="selectSido"><i class="fa-solid fa-location-dot"></i> 지역 이동:</label>
+                        <select id="selectSido" class="form-select-sm">
+                            <option value="ALL" selected>🇰🇷 대한민국 전국 전체 (229개 동네)</option>
+                            <option value="서울">서울특별시 (25개 구)</option>
+                            <option value="경기">경기도 (31개 시·군)</option>
+                            <option value="부산">부산광역시 (16개 구·군)</option>
+                            <option value="대구">대구광역시 (9개 구·군)</option>
+                            <option value="인천">인천광역시 (10개 구·군)</option>
+                            <option value="광주">광주광역시 (5개 구)</option>
+                            <option value="대전">대전광역시 (5개 구)</option>
+                            <option value="울산">울산광역시 (5개 구·군)</option>
+                            <option value="세종">세종특별자치시</option>
+                            <option value="강원">강원특별자치도 (18개 시·군)</option>
+                            <option value="충북">충청북도 (11개 시·군)</option>
+                            <option value="충남">충청남도 (15개 시·군)</option>
+                            <option value="전북">전북특별자치도 (14개 시·군)</option>
+                            <option value="전남">전라남도 (22개 시·군)</option>
+                            <option value="경북">경상북도 (22개 시·군)</option>
+                            <option value="경남">경상남도 (18개 시·군)</option>
+                            <option value="제주">제주특별자치도 (2개 시)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </header>
 
-        <!-- 2. 한눈에 보는 결론 배너 -->
+        <!-- 2. 한눈에 보는 핵심 결론 배너 (글을 확 줄이고 직관적으로) -->
         <section class="verdict-banner card" id="verdictBanner">
             <div class="verdict-left">
                 <div class="verdict-tag"><i class="fa-solid fa-circle-question"></i> <span id="verdictTargetRegion">전국</span> 한눈에 보는 결론</div>
                 <div class="verdict-title" id="verdictTitle">데이터를 분석하고 있습니다...</div>
-                <p class="verdict-desc" id="verdictDesc">예산과 범죄율 데이터를 꼼꼼히 비교하여 쉬운 설명으로 알려드립니다.</p>
+                <p class="verdict-desc" id="verdictDesc">지도 위 라벨을 보면 각 동네의 예산과 범죄 수준을 바로 확인할 수 있습니다.</p>
             </div>
             <div class="verdict-stats">
                 <div class="v-stat-box">
-                    <span class="v-label">예산과 범죄의 연결점</span>
+                    <span class="v-label">예산과 범죄 연결도</span>
                     <span class="v-value" id="valCorrelationR">-</span>
                     <span class="v-sub" id="valCorrelationRDesc">0에 가까울수록 무관</span>
-                </div>
-                <div class="v-stat-box">
-                    <span class="v-label">예산 1억 원 더 쓸 때</span>
-                    <span class="v-value" id="valDeltaPer100M">-</span>
-                    <span class="v-sub">범죄 변화 추정치</span>
                 </div>
                 <div class="v-stat-box highlight-box">
                     <span class="v-label">★ 돈값 한 안심 동네</span>
                     <span class="v-value" id="valModelCount">-</span>
-                    <span class="v-sub">예산 투입 성공 지역</span>
+                    <span class="v-sub">초록색 라벨</span>
                 </div>
             </div>
         </section>
 
-        <!-- 3. 조건 선택 창 (시·도 선택 포함) -->
-        <section class="control-panel card">
-            <div class="panel-header">
-                <h2><i class="fa-solid fa-sliders"></i> 어떤 지역을 비교해 볼까요?</h2>
-                <button class="btn btn-secondary btn-sm" id="btnReloadData">
-                    <i class="fa-solid fa-rotate-right"></i> 데이터 다시 읽기
-                </button>
-            </div>
-
-            <div class="control-grid control-grid-4">
-                <!-- 지역(시도) 선택 -->
-                <div class="form-group">
-                    <label for="selectSido"><i class="fa-solid fa-location-dot"></i> 분석할 지역 (시·도)</label>
-                    <select id="selectSido" class="form-select">
-                        <option value="ALL" selected>🇰🇷 대한민국 전국 전체 (229개 동네)</option>
-                        <option value="서울">서울특별시 (25개 구)</option>
-                        <option value="경기">경기도 (31개 시·군)</option>
-                        <option value="부산">부산광역시 (16개 구·군)</option>
-                        <option value="대구">대구광역시 (9개 구·군)</option>
-                        <option value="인천">인천광역시 (10개 구·군)</option>
-                        <option value="광주">광주광역시 (5개 구)</option>
-                        <option value="대전">대전광역시 (5개 구)</option>
-                        <option value="울산">울산광역시 (5개 구·군)</option>
-                        <option value="세종">세종특별자치시</option>
-                        <option value="강원">강원특별자치도 (18개 시·군)</option>
-                        <option value="충북">충청북도 (11개 시·군)</option>
-                        <option value="충남">충청남도 (15개 시·군)</option>
-                        <option value="전북">전북특별자치도 (14개 시·군)</option>
-                        <option value="전남">전라남도 (22개 시·군)</option>
-                        <option value="경북">경상북도 (22개 시·군)</option>
-                        <option value="경남">경상남도 (18개 시·군)</option>
-                        <option value="제주">제주특별자치도 (2개 시)</option>
-                    </select>
-                </div>
-
-                <!-- 비교 기준 선택 -->
-                <div class="form-group">
-                    <label for="controlType"><i class="fa-solid fa-users"></i> 비교 기준</label>
-                    <select id="controlType" class="form-select">
-                        <option value="total" selected>1. 동네 전체 총액으로 비교 (총 예산 vs 총 범죄 수)</option>
-                        <option value="per_capita">2. 주민 1명 기준으로 공평 비교 (1인당 예산 vs 인구 대비 범죄율)</option>
-                    </select>
-                </div>
-
-                <!-- 리포트 설명 모드 -->
-                <div class="form-group">
-                    <label for="analysisMode"><i class="fa-solid fa-comment-dots"></i> AI 설명 스타일</label>
-                    <select id="analysisMode" class="form-select">
-                        <option value="A" selected>쉬운 해설형 (왜 이런 결과인지 알기 쉽게 설명)</option>
-                        <option value="B">동네 처방전형 (우리 동네 예산 어디에 써야 할지 제안)</option>
-                    </select>
-                </div>
-
-                <!-- 번화가 제외 체크박스 & 실행 버튼 -->
-                <div class="form-group action-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="chkExcludeCommercial"> 번화가/유흥가 빼고 '조용한 주거지'만 비교
-                    </label>
-                    <button class="btn btn-primary" id="btnAnalyze">
-                        <i class="fa-solid fa-magnifying-glass"></i> 결과 분석하고 AI 설명 듣기
-                    </button>
-                </div>
-            </div>
-
-            <!-- 접이식 원본 데이터 미리보기 -->
-            <div class="accordion-section" id="dataAccordion">
-                <div class="accordion-header" id="accordionToggle">
-                    <div class="accordion-title">
-                        <i class="fa-solid fa-table-list"></i>
-                        <span>우리 동네 원본 데이터 펼쳐보기</span>
-                        <span class="count-badge" id="dataCountBadge">0개 동네 로드됨</span>
-                    </div>
-                    <i class="fa-solid fa-chevron-down accordion-icon" id="accordionArrow"></i>
-                </div>
-                <div class="accordion-body" id="accordionContent">
-                    <div class="table-scroll-container">
-                        <table class="data-table" id="previewTable">
-                            <thead>
-                                <tr id="tableHeaderRow">
-                                    <th>지역(시도)</th>
-                                    <th>동네 이름</th>
-                                    <th>범죄예방 예산 (억 원 단위)</th>
-                                    <th>범죄 발생 건수</th>
-                                    <th>주민 수</th>
-                                    <th>동네 특성</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tableBody">
-                                <tr>
-                                    <td colspan="6" class="empty-cell">데이터를 불러오는 중입니다...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 4. 4가지 동네 유형 카드 -->
-        <section class="quadrant-cards-grid">
-            <div class="quad-card card border-q4">
-                <div class="quad-header">
-                    <span class="quad-badge badge-q4"><i class="fa-solid fa-trophy"></i> 1등 안심</span>
-                    <h3>예산 듬뿍, 범죄는 뚝!</h3>
-                </div>
-                <p class="quad-desc">돈을 많이 써서 범죄를 확실하게 줄인 모범 동네</p>
-                <div class="quad-list" id="listQ4">-</div>
-            </div>
-
-            <div class="quad-card card border-q2">
-                <div class="quad-header">
-                    <span class="quad-badge badge-q2"><i class="fa-solid fa-hand-holding-dollar"></i> 지원 시급</span>
-                    <h3>범죄는 많은데 예산 부족</h3>
-                </div>
-                <p class="quad-desc">범죄가 많이 일어나는데 예산이 모자라 도움이 필요한 동네</p>
-                <div class="quad-list" id="listQ2">-</div>
-            </div>
-
-            <div class="quad-card card border-q1">
-                <div class="quad-header">
-                    <span class="quad-badge badge-q1"><i class="fa-solid fa-city"></i> 번화가</span>
-                    <h3>사람 많아 예산도, 사건도 많음</h3>
-                </div>
-                <p class="quad-desc">유동인구와 상권이 커서 예산을 집중 투입 중인 동네</p>
-                <div class="quad-list" id="listQ1">-</div>
-            </div>
-
-            <div class="quad-card card border-q3">
-                <div class="quad-header">
-                    <span class="quad-badge badge-q3"><i class="fa-solid fa-house-chimney"></i> 평온 주거</span>
-                    <h3>적은 돈으로도 평온한 동네</h3>
-                </div>
-                <p class="quad-desc">조용한 주택가라 큰 사건 없이 스스로 안전을 유지하는 동네</p>
-                <div class="quad-list" id="listQ3">-</div>
-            </div>
-        </section>
-
-        <!-- 5. Chart.js 4개 동네 유형 한눈에 보기 그래프 -->
-        <section class="chart-section card">
+        <!-- 3. 메인: 대한민국 지도 (지도 위에 동네 이름과 상태가 바로 보임!) -->
+        <section class="map-section card">
             <div class="section-header">
-                <h2><i class="fa-solid fa-chart-scatter"></i> 한눈에 보는 우리 동네 위치 그래프</h2>
+                <h2><i class="fa-solid fa-map"></i> 우리 동네 안전 지도 (지도 위에 바로 표시)</h2>
                 <div class="chart-quadrant-legends">
-                    <span class="legend-chip chip-q4"><i class="fa-solid fa-circle"></i> 1등 안심 동네</span>
-                    <span class="legend-chip chip-q2"><i class="fa-solid fa-circle"></i> 예산 부족 동네</span>
-                    <span class="legend-chip chip-q1"><i class="fa-solid fa-circle"></i> 번화가 집중 동네</span>
-                    <span class="legend-chip chip-q3"><i class="fa-solid fa-circle"></i> 자연 평온 동네</span>
-                    <span class="legend-chip chip-trend"><i class="fa-solid fa-minus"></i> 전체적인 흐름선</span>
+                    <span class="legend-chip chip-q4"><i class="fa-solid fa-circle"></i> 1등 안심 (예산 듬뿍·범죄 뚝)</span>
+                    <span class="legend-chip chip-q2"><i class="fa-solid fa-circle"></i> 지원 시급 (범죄 많은데 예산 부족)</span>
+                    <span class="legend-chip chip-q1"><i class="fa-solid fa-circle"></i> 번화가 (사람 많아 사건·예산 집중)</span>
+                    <span class="legend-chip chip-q3"><i class="fa-solid fa-circle"></i> 자연 평온 (적은 돈으로도 평온)</span>
                 </div>
             </div>
 
-            <div class="chart-container">
-                <canvas id="correlationChart"></canvas>
-            </div>
-            <div class="chart-footer-note">
-                <i class="fa-solid fa-hand-pointer"></i> 점에 마우스를 올리면 <strong>동네 이름, 예산 금액, 범죄 건수</strong>를 알기 쉽게 보여줍니다.
+            <!-- 지도 컨테이너 (클릭 안 해도 동네 라벨이 지도 위에 그대로 상시 표시) -->
+            <div id="crimeMap" class="map-container"></div>
+            <div class="map-helper-tip">
+                <i class="fa-solid fa-circle-info"></i> 마우스 휠로 확대/축소하거나 드래그할 수 있으며, 지도 위에 <strong>[동네명 | 예산 | 유형]</strong>이 바로 떠 있습니다.
             </div>
         </section>
 
-        <!-- 6. AI 친절한 설명 리포트 -->
-        <section class="report-section card">
-            <div class="report-header">
-                <div class="report-title-area">
-                    <h2><i class="fa-solid fa-robot"></i> 인공지능(AI)이 쉽게 풀어주는 분석 결과</h2>
-                    <span class="report-badge" id="reportModeBadge">쉬운 해설형</span>
+        <!-- 4. 간결한 3줄 AI 브리핑 & 그래프 접이식 영역 -->
+        <div class="sub-dashboard-grid">
+            <!-- 3줄 AI 브리핑 카드 -->
+            <section class="concise-report-card card">
+                <div class="card-mini-header">
+                    <h3><i class="fa-solid fa-robot"></i> 인공지능 3줄 핵심 요약</h3>
+                    <div class="report-actions">
+                        <button class="btn btn-outline btn-sm" id="btnCopyReport">
+                            <i class="fa-regular fa-copy"></i> 복사
+                        </button>
+                    </div>
                 </div>
-                <div class="report-actions">
-                    <button class="btn btn-outline btn-sm" id="btnCopyReport">
-                        <i class="fa-regular fa-copy"></i> 글 복사하기
-                    </button>
-                    <button class="btn btn-outline btn-sm" id="btnDownloadReport">
-                        <i class="fa-solid fa-download"></i> 파일(.md) 저장
-                    </button>
+                <div class="report-viewer markdown-body" id="reportViewer">
+                    <p class="loading-mini">분석 요약글을 준비하고 있습니다...</p>
                 </div>
-            </div>
+            </section>
 
-            <div class="loading-overlay" id="loadingOverlay" style="display: none;">
-                <div class="spinner"></div>
-                <p class="loading-text">인공지능이 "예산을 많이 쓰면 범죄가 줄어들까?"에 대한 쉬운 설명을 작성하고 있습니다...</p>
-                <span class="loading-sub">전국 및 선택 지역 데이터를 바탕으로 작성 중</span>
-            </div>
-
-            <div class="report-viewer markdown-body" id="reportViewer">
-                <div class="report-placeholder">
-                    <i class="fa-regular fa-lightbulb"></i>
-                    <p>위의 <strong>[결과 분석하고 AI 설명 듣기]</strong> 버튼을 누르면 친절한 설명글이 여기에 나타납니다.</p>
+            <!-- 산점도 그래프 카드 (서브) -->
+            <section class="mini-chart-card card">
+                <div class="card-mini-header">
+                    <h3><i class="fa-solid fa-chart-line"></i> 전체 흐름 분포 그래프</h3>
                 </div>
-            </div>
-        </section>
+                <div class="mini-chart-container">
+                    <canvas id="correlationChart"></canvas>
+                </div>
+            </section>
+        </div>
 
-        <!-- 토스트 알림 메시지 -->
+        <!-- 5. 토스트 메시지 & 푸터 -->
         <div class="toast-message" id="toastMessage"></div>
-
         <footer class="dashboard-footer">
-            <p>우리 동네 범죄예방 예산과 안전 분석기 | 누구나 쉽게 보는 전국 공공데이터</p>
+            <p>우리 동네 범죄예방 예산과 안전 지도 | 대한민국 공공데이터 오픈소스 맵</p>
         </footer>
     </div>
 
-    <!-- 스크립트 -->
+    <!-- 숨겨진 기본 설정 컨트롤러 (호환성 유지) -->
+    <div style="display: none;">
+        <select id="controlType"><option value="total" selected></option></select>
+        <select id="analysisMode"><option value="A" selected></option></select>
+        <input type="checkbox" id="chkExcludeCommercial" />
+        <button id="btnReloadData"></button>
+        <button id="btnAnalyze"></button>
+        <button id="btnDownloadReport"></button>
+        <span id="dataCountBadge"></span>
+        <span id="fileStatusText"></span>
+        <div id="fileStatusBadge"></div>
+        <tbody id="tableBody"></tbody>
+        <span id="valDeltaPer100M"></span>
+        <span id="listQ4"></span>
+        <span id="listQ2"></span>
+        <span id="listQ1"></span>
+        <span id="listQ3"></span>
+    </div>
+
+    <!-- 프론트 스크립트 -->
     <script src="/static/js/app.js"></script>
 </body>
 </html>
