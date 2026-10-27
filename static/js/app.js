@@ -611,6 +611,7 @@ async function sendUserQuestion() {
     const loading = document.getElementById("qaLoading");
     const bubble = document.getElementById("qaAnswerBubble");
     const selectSido = document.getElementById("selectSido");
+    const btnSend = document.getElementById("btnSendQuestion");
     const selectedSido = selectSido ? selectSido.value : "전국";
 
     if (!input || !input.value.trim()) {
@@ -623,6 +624,10 @@ async function sendUserQuestion() {
     if (container) container.style.display = "block";
     if (loading) loading.style.display = "flex";
     if (bubble) bubble.innerHTML = "";
+    if (btnSend) {
+        btnSend.disabled = true;
+        btnSend.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 답변 생성 중...';
+    }
 
     try {
         const response = await fetch("/ask-ai", {
@@ -646,6 +651,7 @@ async function sendUserQuestion() {
             } else {
                 bubble.innerText = resData.answer;
             }
+            container.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
 
         showToast("인공지능 답변이 도착했습니다!", "success");
@@ -655,6 +661,10 @@ async function sendUserQuestion() {
         if (bubble) bubble.innerHTML = `<p style="color:#dc2626;">서버와 통신 중 문제가 발생했습니다.</p>`;
     } finally {
         if (loading) loading.style.display = "none";
+        if (btnSend) {
+            btnSend.disabled = false;
+            btnSend.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 질문하기';
+        }
     }
 }
 

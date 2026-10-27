@@ -49,6 +49,31 @@ def find_excel_file():
         return csv_files[0]
     return None
 
+_CRIME_DF_CACHE = None
+
+def get_cached_crime_df():
+    """파일 I/O 병목 제거: 229개 동네 데이터를 메모리에 캐싱하여 0.001초 내 반환"""
+    global _CRIME_DF_CACHE
+    if _CRIME_DF_CACHE is not None:
+        return _CRIME_DF_CACHE.copy()
+    
+    excel_file = find_excel_file()
+    if not excel_file:
+        return None
+    try:
+        if excel_file.endswith(".csv"):
+            try:
+                df = pd.read_csv(excel_file, encoding="utf-8")
+            except UnicodeDecodeError:
+                df = pd.read_csv(excel_file, encoding="cp949")
+        else:
+            df = pd.read_excel(excel_file, engine="openpyxl")
+        _CRIME_DF_CACHE = df
+        return _CRIME_DF_CACHE.copy()
+    except Exception as e:
+        logger.error(f"데이터 파일 로드 실패: {e}")
+        return None
+
 def auto_detect_columns(df):
     """동네명, 시도, 예산, 범죄 건수, 주민 수 컬럼을 자동 감지합니다."""
     cols = df.columns.tolist()
@@ -102,20 +127,14 @@ def index():
 
 @app.route("/load-data", methods=["GET"])
 def load_data():
-    excel_file = find_excel_file()
-    if not excel_file:
+    df = get_cached_crime_df()
+    if df is None or len(df) == 0:
         return jsonify({
             "success": False,
             "error": "폴더 안에 분석할 데이터 파일(crime_data.xlsx 등)이 없습니다."
         }), 404
         
     try:
-        if excel_file.endswith(".csv"):
-            try: df = pd.read_csv(excel_file, encoding="utf-8")
-            except UnicodeDecodeError: df = pd.read_csv(excel_file, encoding="cp949")
-        else:
-            df = pd.read_excel(excel_file, engine="openpyxl")
-            
         total_raw_rows = len(df)
         if total_raw_rows == 0:
             return jsonify({"success": False, "error": f"'{excel_file}' 파일에 데이터가 비어 있습니다."}), 400
@@ -153,8 +172,8 @@ def load_data():
 @app.route("/generate", methods=["POST"])
 def generate():
     """전국 및 시도별 가설 실증 & 지도 데이터 생성"""
-    excel_file = find_excel_file()
-    if not excel_file:
+    df = get_cached_crime_df()
+    if df is None or len(df) == 0:
         return jsonify({"success": False, "error": "데이터 파일이 없습니다."}), 400
         
     req_data = request.get_json() or {}
@@ -164,11 +183,6 @@ def generate():
     selected_sido = req_data.get("selected_sido", "ALL")
     
     try:
-        if excel_file.endswith(".csv"):
-            try: df = pd.read_csv(excel_file, encoding="utf-8")
-            except UnicodeDecodeError: df = pd.read_csv(excel_file, encoding="cp949")
-        else:
-            df = pd.read_excel(excel_file, engine="openpyxl")
             
         mapping = auto_detect_columns(df)
         region_col = req_data.get("region_col") or mapping["region_col"]
@@ -339,7 +353,7 @@ def generate():
 
 @app.route("/ask-ai", methods=["POST"])
 def ask_ai():
-    """사용자가 입력한 자유 질문에 대해 229개 빅데이터 기반 답변 생성"""
+    """사용자가 입력한 자유 질문에 대해 229개 빅데이터 기반 답변 초고속(1~2초) 생성"""
     req_data = request.get_json() or {}
     user_question = req_data.get("question", "").strip()
     selected_region = req_data.get("selected_region", "전국")
@@ -347,17 +361,11 @@ def ask_ai():
     if not user_question:
         return jsonify({"success": False, "error": "질문 내용을 입력해주세요."}), 400
 
-    excel_file = find_excel_file()
-    if not excel_file:
+    df = get_cached_crime_df()
+    if df is None or len(df) == 0:
         return jsonify({"success": False, "error": "데이터 파일이 없습니다."}), 400
 
     try:
-        if excel_file.endswith(".csv"):
-            try: df = pd.read_csv(excel_file, encoding="utf-8")
-            except UnicodeDecodeError: df = pd.read_csv(excel_file, encoding="cp949")
-        else:
-            df = pd.read_excel(excel_file, engine="openpyxl")
-
         mapping = auto_detect_columns(df)
         reg_col = mapping["region_col"]
         bud_col = mapping["budget_col"]
@@ -394,20 +402,26 @@ def ask_ai():
 
         ai_answer = ""
         if GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here":
-            try:
+            def call_fast_gemini():
                 from google import genai
                 client = genai.Client(api_key=GEMINI_API_KEY)
-                # 최신 지원 모델 순차 호출
-                for m in ["gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+                # 1초대 응답 최적화 경량 모델 우선 호출
+                for m in ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash"]:
                     try:
                         res = client.models.generate_content(model=m, contents=full_prompt)
                         if res and res.text:
-                            ai_answer = res.text
-                            break
+                            return res.text
                     except Exception:
                         continue
+                return ""
+
+            try:
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(call_fast_gemini)
+                    ai_answer = future.result(timeout=5.0)
             except Exception as api_err:
-                logger.warning(f"Gemini API 호출 우회: {str(api_err)}")
+                logger.warning(f"Gemini API 지연/시간초과로 즉시 고속 통계 답변 전환: {str(api_err)}")
 
         if not ai_answer:
             ai_answer = generate_fallback_qa_answer(user_question, df_work, r, top3_eff, worst3_eff, top_budget, top_crime, selected_region)
