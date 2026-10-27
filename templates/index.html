@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>지자체 범죄예방 예산 및 범죄율 상관분석 시스템</title>
+    <!-- Chart.js 최신 CDN (필수 요구사항) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Markdown 파서 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- 스타일시트 -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- FontAwesome 아이콘 (선택적 가독성) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 1. 대시보드 헤더 -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <div class="title-area">
+                    <span class="system-badge"><i class="fa-solid fa-chart-line"></i> 공공 치안 빅데이터 AI 분석 플랫폼</span>
+                    <h1>지자체 범죄예방 예산 및 범죄율 상관분석 시스템</h1>
+                    <p class="subtitle">지자체별 치안 예산 집행 규모와 범죄 발생 지표 간의 수학적 상관계수($r$) 및 AI 정책 리포트 산출</p>
+                </div>
+                <div class="file-status-badge {% if file_status.found %}badge-active{% else %}badge-inactive{% endif %}" id="fileStatusBadge">
+                    <i class="fa-solid {% if file_status.found %}fa-file-excel{% else %}fa-circle-exclamation{% endif %}"></i>
+                    <span id="fileStatusText">
+                        {% if file_status.found %}
+                            데이터 파일 인식됨: <strong>{{ file_status.filename }}</strong>
+                        {% else %}
+                            엑셀 파일 없음 (crime_data.xlsx 필요)
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </header>
+
+        <!-- 2. 제어 패널 (컨트롤 영역) -->
+        <section class="control-panel card">
+            <div class="panel-header">
+                <h2><i class="fa-solid fa-sliders"></i> 분석 조건 설정 및 데이터 로드</h2>
+                <button class="btn btn-secondary btn-sm" id="btnReloadData">
+                    <i class="fa-solid fa-rotate-right"></i> 데이터 다시 읽기
+                </button>
+            </div>
+
+            <div class="control-grid">
+                <!-- 분석 모드 선택 -->
+                <div class="form-group">
+                    <label for="analysisMode"><i class="fa-solid fa-brain"></i> AI 분석 리포트 모드</label>
+                    <select id="analysisMode" class="form-select">
+                        <option value="A" selected>Prompt A (학술·통계 분석형: r 유의성, 산점도 경향, 역인과성 규명)</option>
+                        <option value="B">Prompt B (지자체 정책 컨설팅형: 고효율 벤치마킹, 차년도 예산 재배분)</option>
+                    </select>
+                </div>
+
+                <!-- 분석 기준/통제 변수 선택 -->
+                <div class="form-group">
+                    <label for="controlType"><i class="fa-solid fa-scale-balanced"></i> 분석 기준 (통제 변수)</label>
+                    <select id="controlType" class="form-select">
+                        <option value="total" selected>단순 총액 비교 (총 예산 vs 총 범죄발생수)</option>
+                        <option value="per_capita">인구 1인당 표준화 (1인당 예산 vs 1만명당 범죄율)</option>
+                    </select>
+                </div>
+
+                <!-- 실행 버튼 -->
+                <div class="form-group action-group">
+                    <label>&nbsp;</label>
+                    <button class="btn btn-primary" id="btnAnalyze">
+                        <i class="fa-solid fa-chart-pie"></i> 상관분석 및 AI 리포트 생성
+                    </button>
+                </div>
+            </div>
+
+            <!-- 접이식(Accordion) 원본 데이터 미리보기 테이블 -->
+            <div class="accordion-section" id="dataAccordion">
+                <div class="accordion-header" id="accordionToggle">
+                    <div class="accordion-title">
+                        <i class="fa-solid fa-table-list"></i>
+                        <span>로드된 엑셀 데이터 미리보기</span>
+                        <span class="count-badge" id="dataCountBadge">0건 로드됨</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down accordion-icon" id="accordionArrow"></i>
+                </div>
+                <div class="accordion-body" id="accordionContent">
+                    <div class="table-scroll-container">
+                        <table class="data-table" id="previewTable">
+                            <thead>
+                                <tr id="tableHeaderRow">
+                                    <th>지자체명</th>
+                                    <th>범죄예방 예산 (원화 / 억 원 병기)</th>
+                                    <th>범죄 발생 수치</th>
+                                    <th>인구수</th>
+                                    <th>특이사항</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <tr>
+                                    <td colspan="5" class="empty-cell">상단의 '데이터 다시 읽기'를 누르거나 페이지 로드 시 엑셀 데이터를 불러옵니다.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. 지표 요약 카드 그리드 -->
+        <section class="summary-cards-grid" id="summarySection">
+            <!-- 상관계수 카드 -->
+            <div class="summary-card card">
+                <div class="card-icon r-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                <div class="card-body">
+                    <div class="card-label">피어슨 상관계수 ($r$)</div>
+                    <div class="card-value" id="valCorrelationR">-</div>
+                    <div class="card-tag" id="tagCorrelationStrength">데이터 분석 대기 중</div>
+                </div>
+            </div>
+
+            <!-- 1억 원당 범죄율 증감 지표 -->
+            <div class="summary-card card">
+                <div class="card-icon slope-icon"><i class="fa-solid fa-calculator"></i></div>
+                <div class="card-body">
+                    <div class="card-label">예산 1억 원당 범죄지표 변동</div>
+                    <div class="card-value" id="valDeltaPer100M">-</div>
+                    <div class="card-tag" id="tagDeltaDesc">회귀 기울기 추정치</div>
+                </div>
+            </div>
+
+            <!-- 최고 효율 지자체 카드 -->
+            <div class="summary-card card highlight-green">
+                <div class="card-icon top-eff-icon"><i class="fa-solid fa-medal"></i></div>
+                <div class="card-body">
+                    <div class="card-label">최고 효율 지자체 (저비용-저범죄)</div>
+                    <div class="card-value-small" id="valTopEfficiency">-</div>
+                    <div class="card-subtext" id="subTopEfficiency">투입 예산 대비 범죄 억제 우수 권역</div>
+                </div>
+            </div>
+
+            <!-- 중점 관리 지자체 카드 -->
+            <div class="summary-card card highlight-amber">
+                <div class="card-icon bottom-eff-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div class="card-body">
+                    <div class="card-label">예산 집중 배정 지자체</div>
+                    <div class="card-value-small" id="valBottomEfficiency">-</div>
+                    <div class="card-subtext" id="subBottomEfficiency">상권/유동인구 집중 등 역인과성 관리 권역</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Chart.js 시각화 카드 -->
+        <section class="chart-section card">
+            <div class="section-header">
+                <h2><i class="fa-solid fa-chart-scatter"></i> 지자체별 예산-범죄율 산점도 및 선형 회귀 추세선</h2>
+                <div class="chart-legend-badge">
+                    <span class="legend-dot dot-scatter"></span> 지자체 관측치 (산점도)
+                    <span class="legend-line line-trend"></span> 1차 최소자승법 추세선 (Trendline)
+                </div>
+            </div>
+
+            <!-- 반응형 캔버스 래퍼 (요구사항 규격 준수) -->
+            <div class="chart-container">
+                <canvas id="correlationChart"></canvas>
+            </div>
+            <div class="chart-footer-note">
+                <i class="fa-solid fa-circle-info"></i> 마우스를 점 위에 올리면 <strong>'억 원'</strong> 단위로 환산된 예산액과 범죄율 상세 정보를 확인할 수 있습니다.
+            </div>
+        </section>
+
+        <!-- 5. AI 심층 분석 리포트 영역 -->
+        <section class="report-section card">
+            <div class="report-header">
+                <div class="report-title-area">
+                    <h2><i class="fa-solid fa-file-contract"></i> AI 심층 분석 및 정책 제언 리포트</h2>
+                    <span class="report-badge" id="reportModeBadge">모드 A: 학술·통계 분석형</span>
+                </div>
+                <div class="report-actions">
+                    <button class="btn btn-outline btn-sm" id="btnCopyReport">
+                        <i class="fa-regular fa-copy"></i> 리포트 복사
+                    </button>
+                    <button class="btn btn-outline btn-sm" id="btnDownloadReport">
+                        <i class="fa-solid fa-download"></i> Markdown (.md) 저장
+                    </button>
+                </div>
+            </div>
+
+            <!-- 로딩 스피너 애니메이션 -->
+            <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+                <div class="spinner"></div>
+                <p class="loading-text">Gemini AI가 피어슨 상관계수와 지자체별 예산 효율성을 심층 분석 중입니다...</p>
+                <span class="loading-sub">최소자승 회귀 검증 및 역인과성 진단 생성 중</span>
+            </div>
+
+            <!-- 마크다운 리포트 결과 뷰어 -->
+            <div class="report-viewer markdown-body" id="reportViewer">
+                <div class="report-placeholder">
+                    <i class="fa-regular fa-comments"></i>
+                    <p>상단의 <strong>[상관분석 및 AI 리포트 생성]</strong> 버튼을 누르면 인공지능 정책 리포트가 이곳에 실시간 렌더링됩니다.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 토스트 알림 메시지 -->
+        <div class="toast-message" id="toastMessage"></div>
+
+        <!-- 푸터 -->
+        <footer class="dashboard-footer">
+            <p>AI Crime Budget & Rate Excel Analyzer | Powered by Flask, Pandas, Chart.js & Google Gemini</p>
+        </footer>
+    </div>
+
+    <!-- 프론트엔드 메인 로직 스크립트 -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
