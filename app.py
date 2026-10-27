@@ -21,14 +21,19 @@ logger = logging.getLogger("CrimeBudgetAnalyzer")
 
 app = Flask(__name__)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def find_excel_file():
-    """분석할 엑셀 또는 CSV 파일을 자동 탐색합니다."""
+    """분석할 엑셀 또는 CSV 파일을 자동 탐색합니다 (Vercel 환경 지원)."""
+    target = os.path.join(BASE_DIR, "crime_data.xlsx")
+    if os.path.exists(target):
+        return target
     if os.path.exists("crime_data.xlsx"):
         return "crime_data.xlsx"
-    excel_files = glob.glob("*.xlsx") + glob.glob("*.xls")
+    excel_files = glob.glob(os.path.join(BASE_DIR, "*.xlsx")) + glob.glob("*.xlsx")
     if excel_files:
         return excel_files[0]
-    csv_files = glob.glob("*.csv")
+    csv_files = glob.glob(os.path.join(BASE_DIR, "*.csv")) + glob.glob("*.csv")
     if csv_files:
         return csv_files[0]
     return None
